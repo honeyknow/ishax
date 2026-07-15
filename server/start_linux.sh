@@ -96,8 +96,10 @@ BACKEND_PID=$!
 echo "      ✓ Backend started  (PID=$BACKEND_PID) → backend/backend.log"
 
 cd "$SCRIPT_DIR/frontend"
-pkill -f "npm run dev" 2>/dev/null || true
-sleep 1
+    pkill -f "npm run dev" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+    fuser -k 5173/tcp 2>/dev/null || true
+    sleep 1
 nohup npm run dev -- --host 0.0.0.0 --port 5173 > frontend.log 2>&1 &
 FRONTEND_PID=$!
 echo "      ✓ Frontend started (PID=$FRONTEND_PID) → frontend/frontend.log"

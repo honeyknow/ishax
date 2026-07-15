@@ -65,9 +65,6 @@ endpoint.zip
 *.msi
 Sysmon64.exe
 amsi_watcher.exe
-endpoint/wazuh-agent-*.msi
-endpoint/Sysmon64.exe
-endpoint/amsi_watcher.exe
 
 # Temp installer build dirs
 ishax_build_*/
