@@ -154,7 +154,7 @@ class TenantManager:
                 (slug, email, display_name or email.split("@")[0], db_filename, int(time.time())),
             )
             self._master.commit()
-            print(f"[TenantManager] New tenant provisioned: {email} → {db_filename}", flush=True)
+            print(f"[TenantManager] New tenant provisioned: {email} -> {db_filename}", flush=True)
             row = self._master.execute(
                 "SELECT * FROM tenants WHERE id = ?", (slug,)
             ).fetchone()
