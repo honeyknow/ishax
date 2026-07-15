@@ -151,7 +151,16 @@ async def auth_login(request: Request):
         # Dev mode: auto-login as admin
         request.session["user_email"] = ADMIN_EMAIL
         return RedirectResponse("/")
-    redirect_uri = str(request.url_for("auth_callback"))
+    
+    # If FRONTEND_ORIGIN is set, force the redirect URI to match it.
+    # This prevents redirect_uri_mismatch errors when running behind reverse proxies (like Vite/Codespaces)
+    # that rewrite the Host header to localhost.
+    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "").rstrip("/")
+    if frontend_origin and frontend_origin != "*":
+        redirect_uri = f"{frontend_origin}/auth/callback"
+    else:
+        redirect_uri = str(request.url_for("auth_callback"))
+        
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
