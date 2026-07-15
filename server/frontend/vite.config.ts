@@ -10,10 +10,15 @@ export default defineConfig({
     port: devPort,
     allowedHosts: true,
     proxy: {
-      '^/(auth|alerts|stats|rules|admin|deploy|threatintel|tenant|health)(/.*)?$': {
-        target: apiTarget,
-        changeOrigin: true,
-      },
+      '/auth': { target: apiTarget, changeOrigin: true },
+      '/alerts': { target: apiTarget, changeOrigin: true },
+      '/stats': { target: apiTarget, changeOrigin: true },
+      '/rules': { target: apiTarget, changeOrigin: true },
+      '/admin': { target: apiTarget, changeOrigin: true },
+      '/deploy': { target: apiTarget, changeOrigin: true },
+      '/threatintel': { target: apiTarget, changeOrigin: true },
+      '/tenant': { target: apiTarget, changeOrigin: true },
+      '/health': { target: apiTarget, changeOrigin: true },
     },
   },
 })
