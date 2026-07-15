@@ -141,9 +141,8 @@ export default function AdminPanel({ onImpersonate }: Props) {
   const maxDbSize = Math.max(...tenants.map(t => t.db_size_bytes), 1)
 
   return (
-    <div style={{ padding: '20px 24px', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-      {/* Header */}
+    <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Shield size={20} color="var(--accent)" />
@@ -374,6 +373,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
         )}
       </div>
 
+      </div>
     </div>
   )
 }
