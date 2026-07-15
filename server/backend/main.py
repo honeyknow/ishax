@@ -75,6 +75,7 @@ def utc_from_epoch(epoch: Optional[int]) -> Optional[str]:
 def get_db():
     """Legacy single-tenant fallback — only used if TenantManager fails to init."""
     # Point fallback at admin tenant DB if it exists, else legacy edr.db
+    from multi_tenant_manager import TENANT_DB_DIR
     admin_db = os.path.join(TENANT_DB_DIR, "tenant_b1ba195b.db")
     path = admin_db if os.path.exists(admin_db) else DB_PATH
     conn = sqlite3.connect(path)
