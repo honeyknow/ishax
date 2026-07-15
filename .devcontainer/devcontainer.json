@@ -1,0 +1,30 @@
+{
+  "name": "ISHA-X EDR — SaaS Server",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
+    "ghcr.io/tailscale/codespace/tailscale:1": {}
+  },
+  "capAdd": ["CAP_NET_ADMIN", "CAP_MKNOD", "CAP_NET_RAW"],
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": { "label": "ISHA-X Dashboard", "onAutoForward": "openBrowserOnce" },
+    "8000": { "label": "FastAPI Backend", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteEnv": {
+    "TAILSCALE_AUTH_KEY": "${localEnv:TAILSCALE_AUTH_KEY}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylance",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3"
+      }
+    }
+  }
+}

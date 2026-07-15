@@ -1,0 +1,38 @@
+# Adapted from: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_sc_create_service.yml
+# Widened to catch any sc.exe create / New-Service invocation, not just staging-dir paths.
+# Staging-dir restriction was too narrow — Atomic Red Team uses C:\AtomicRedTeam\... path.
+# Guarding against False Alerts (1): filter excludes known-safe system service managers.
+title: Suspicious Service Creation
+id: f7675646-cd24-4903-875c-ce3d17db2907
+status: test
+description: Detects service creation via sc.exe or New-Service from non-system processes. Guarding against False Alerts (1).
+author: Antigravity
+date: 2026/07/10
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        CommandLine|contains:
+            - 'binPath='
+            - 'BinaryPathName'
+        CommandLine|contains:
+            - 'create'
+            - 'New-Service'
+            - 'sc config'
+
+    filter_system:
+        Image|endswith:
+            - '\msiexec.exe'
+            - '\TrustedInstaller.exe'
+            - '\services.exe'
+            - '\svchost.exe'
+
+    condition: selection and not filter_system
+falsepositives:
+    - Legitimate software installers (allowlist by hash if needed)
+level: high
+
+tags:
+    - attack.persistence
+    - attack.t1543.003

@@ -1,0 +1,67 @@
+===================================================
+1. DISABLE SCREENSAVER & SLEEP (Keep screen always ON)
+===================================================
+Run this in CMD or PowerShell (as Administrator):
+
+powercfg /change monitor-timeout-ac 0
+powercfg /change monitor-timeout-dc 0
+powercfg /change standby-timeout-ac 0
+powercfg /change standby-timeout-dc 0
+reg add "HKEY_CURRENT_USER\Control Panel\Desktop" /v ScreenSaveActive /t REG_SZ /d 0 /f
+
+
+===================================================
+2. WINDOWS DEFENDER TRICKS (For Malware Testing)
+===================================================
+
+TRICK A: Add Exclusion (Highly Recommended - No Interference)
+Run in PowerShell (as Administrator):
+
+Add-MpPreference -ExclusionPath "C:\"
+
+
+TRICK B: Hard Disable (Requires turning off Tamper Protection first in GUI!)
+Run in PowerShell (as Administrator) AFTER turning off Tamper Protection:
+
+Set-MpPreference -DisableRealtimeMonitoring $true
+Set-MpPreference -DisableBehaviorMonitoring $true
+Set-MpPreference -DisableBlockAtFirstSeen $true
+Set-MpPreference -DisableIOAVProtection $true
+Set-MpPreference -DisableScriptScanning $true
+Set-MpPreference -SubmitSamplesConsent 2
+
+
+network share
+
+New-SmbShare -Name "latestedr" -Path "C:\cursor\weknows\latestedr" -FullAccess "Everyone"
+
+
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Lsa" -Name "everyoneincludesanonymous" -Value 1
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Lsa" -Name "restrictanonymous" -Value 0
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Services\LanmanServer\Parameters" -Name "restrictnullsessaccess" -Value 0
+Restart-Service -Name LanmanServer -Force
+
+
+powershell -ExecutionPolicy Bypass -File .\amsi_sanity_check.ps1
+
+
+
+
+
+
+===================================================
+ISHAX v2 TARGETED FIX TESTING COMMANDS
+Run these in an Administrator PowerShell inside the VM!
+===================================================
+
+# 1. Test T1543.003 (Service Install - Dual Channel)
+sc.exe create ISHAXTestSvc binPath= "C:\Windows\System32\cmd.exe" start= demand
+
+# 2. Test T1059.005 (VBA/VBScript via AMSI)
+# We use cscript to execute VBScript, triggering AMSI
+echo 'MsgBox "ISHAX Test VBS", 0, "Test"' > $env:TEMP\ishax_test.vbs
+cscript.exe $env:TEMP\ishax_test.vbs
+
+# 3. Test T1059.007 (JScript via AMSI)
+echo 'WScript.Echo("ISHAX Test JS");' > $env:TEMP\ishax_test.js
+cscript.exe $env:TEMP\ishax_test.js

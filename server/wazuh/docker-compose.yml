@@ -1,0 +1,66 @@
+# ISHA-X EDR -- Manager Only (Lightweight Local Setup)
+# =====================================================
+# Sirf wazuh.manager chalaata hai.
+# Indexer (OpenSearch ~3GB) aur Dashboard (~1GB) skip.
+# Tumhara apna React dashboard + FastAPI backend kaam karega.
+# Total RAM: ~500MB-1GB only.
+#
+# Usage:
+#   docker compose -f docker-compose.manager-only.yml up -d
+#   docker compose -f docker-compose.manager-only.yml down
+#
+# NOTE: Filebeat "connection refused" errors aayenge (indexer nahi hai)
+# -- yeh normal hai, archives.json THEEK se likhta rahega.
+
+services:
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.8.0
+    hostname: wazuh.manager
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    ports:
+      - "1514:1514"   # Agent events
+      - "1515:1515"   # Agent enrollment
+      - "55000:55000" # Wazuh REST API
+    environment:
+      - INDEXER_URL=https://wazuh.indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
+      - filebeat_var:/var/lib/filebeat
+      - ./config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
+      - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
+
+volumes:
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
+  filebeat_var:

@@ -1,0 +1,42 @@
+# Adapted from: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_wmic_process_creation.yml
+# Locked variant: ParentImage must be WmiPrvSE.exe AND child CommandLine contains known LOLBin names.
+# Generic WMI activity (any WmiPrvSE child) is too broad — guards against False Alert (1).
+# Guarding against: Missing Logs (2) — Sysmon EID 19/20/21 must be enabled; was disabled in prior config.
+title: Suspicious WMI Execution
+id: c4675646-cd24-4903-875c-ce3d17db2604
+status: test
+description: Detects suspicious WMI activity such as process creation via wmic.exe or WmiPrvSE. Guarding against Missing Logs (2).
+author: Antigravity
+date: 2026/07/10
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_wmiprvse:
+        ParentImage|endswith: '\WmiPrvSE.exe'
+        CommandLine|contains:
+            - 'cmd.exe /c'
+            - 'powershell.exe'
+            - 'rundll32.exe'
+            - 'regsvr32.exe'
+            - 'certutil.exe'
+            
+    selection_ps_wmi_api_cmd:
+        CommandLine|contains:
+            - 'Win32_Process'
+            - 'Invoke-WmiMethod'
+            - '[wmiclass]'
+            
+    selection_ps_wmi_api_create:
+        CommandLine|contains:
+            - 'Create('
+            - 'Create ('
+            
+    condition: selection_wmiprvse or (selection_ps_wmi_api_cmd and selection_ps_wmi_api_create)
+falsepositives:
+    - Legitimate admin scripts running via WMI
+level: high
+
+tags:
+    - attack.execution
+    - attack.t1047

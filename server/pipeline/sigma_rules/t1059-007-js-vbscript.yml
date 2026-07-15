@@ -1,0 +1,58 @@
+# CUSTOM RULE — No equivalent SigmaHQ AMSI-content rule exists for JS/VBS buffers.
+# SigmaHQ has process_creation rules for wscript/cscript but not AMSI buffer matching.
+# Detection implemented as Python AMSI Layer A in detector.py::check_amsi_layer().
+# Source for WSH AMSI integration:
+#   https://learn.microsoft.com/en-us/windows/win32/amsi/how-amsi-helps
+#
+# NOTE: This YAML file is DISABLED in disabled_rules.json (pySigma cannot process
+# AMSI buffer content — detection runs via Python Layer A in detector.py).
+# This file serves as: documentation, Atomic Red Team test mapping, MITRE metadata.
+#
+# AppName values for WSH via AmsiInitialize (documented, partially verified):
+#   "Windows Script Host" — wscript.exe / cscript.exe
+#   "JScript"             — inline jscript from other hosts
+#   "VBScript"            — inline vbscript
+#   Update: Testing JS/VBS via cscript.exe in the lab yielded ZERO AMSI ETW events.
+#   Reason: The user's 'DisableScriptScanning $true' Defender policy physically
+#   disables WSH from invoking AMSI. For real testing, ScriptScanning MUST be enabled.
+#   Source: https://learn.microsoft.com/en-us/windows/win32/amsi/how-amsi-helps
+title: JavaScript/VBScript Suspicious Content — T1059.007 (AMSI Layer A)
+id: b2c3d4e5-f6a7-8901-bcde-f12345678907
+status: test
+description: >
+  Detects malicious JS/VBScript content captured by AMSI via Windows Script Host.
+  Matches: eval, unescape, ActiveXObject, WScript.Shell, URLDownloadToFile,
+  String.fromCharCode, PowerShell / cmd.exe spawning from script context.
+  Detection implemented via Python AMSI Layer A — this YAML is documentation only.
+  Single-signal (no secondary cmdline layer for WSH scripts). Confidence = HIGH on match.
+author: Antigravity / ISHAX v2 (custom — no SigmaHQ AMSI buffer equivalent)
+date: 2026/07/11
+references:
+  - https://learn.microsoft.com/en-us/windows/win32/amsi/how-amsi-helps
+  - https://attack.mitre.org/techniques/T1059/007/
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_wscript_cscript_script_exec.yml
+logsource:
+  product: windows
+  service: ishax-amsi
+detection:
+  # Implemented via detector.py check_amsi_layer() — not by pySigma
+  # Caller filter: process image in {wscript.exe, cscript.exe, mshta.exe}
+  #             OR content_name has extension {.js, .vbs, .jse, .vbe, .wsf, .hta}
+  selection_amsi_caller:
+    Channel: 'ISHAX-AMSI'
+  selection_script_ext:
+    AmsiContentName|contains:
+      - '.js'
+      - '.vbs'
+      - '.jse'
+      - '.vbe'
+      - '.wsf'
+      - '.hta'
+  condition: selection_amsi_caller and selection_script_ext
+falsepositives:
+  - Legitimate JS automation scripts with eval() (allowlist by script hash or path)
+level: high
+
+tags:
+  - attack.execution
+  - attack.t1059.007

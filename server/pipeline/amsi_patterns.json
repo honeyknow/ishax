@@ -1,0 +1,61 @@
+{
+  "_comment": "AMSI Layer A detection patterns for ISHAX v2. Loaded at runtime by detector.py. Stored separately to avoid AV/EDR false-positive on the Python source file.",
+
+  "T1059.001": {
+    "description": "PowerShell malicious content — Mimikatz, post-ex, download cradles, AMSI bypass",
+    "sources": [
+      "SigmaHQ: rules/windows/powershell/powershell_script/posh_ps_malicious_commandlets.yml",
+      "SigmaHQ: rules/windows/powershell/powershell_script/posh_ps_download_cradle.yml"
+    ],
+    "patterns": [
+      "Invoke-Mimikatz", "Invoke-Mimikittenz", "Invoke-NanoDump",
+      "Invoke-SafetyKatz", "Invoke-BetterSafetyKatz", "Invoke-DinvokeKatz",
+      "sekurlsa", "logonpasswords", "lsadump", "dcsync",
+      "Invoke-Shellcode", "Invoke-ReflectivePEInjection", "Invoke-PSInject",
+      "Invoke-DllInjection", "VirtualAlloc", "CreateThread",
+      "Get-GPPPassword", "Get-PassHashes", "Get-LSASecret",
+      "Get-RemoteCachedCredential", "Get-VaultCredential",
+      "Invoke-PowerDump", "Invoke-PowerDPAPI", "Invoke-DCSync",
+      "Add-Persistence", "Get-Keystrokes", "Get-TimedScreenshot",
+      "Net.WebClient", "DownloadString", "DownloadFile",
+      "Invoke-WebRequest", "Start-BitsTransfer",
+      "IEX(", "IEX (", "Invoke-Expression",
+      "amsiInitFailed", "AmsiScanBuffer", "amsiContext",
+      "amsi.dll", "AmsiScanString"
+    ]
+  },
+
+  "T1059.005": {
+    "description": "VBA / Office macro malicious content",
+    "sources": [
+      "Custom — no equivalent SigmaHQ AMSI-content rule for VBA buffer (2026-07)",
+      "https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/office-macro-amsi"
+    ],
+    "patterns": [
+      "CreateObject", "Shell", "WScript.Shell", "PowerShell",
+      "cmd.exe", "certutil", "bitsadmin", "mshta",
+      "AutoOpen", "Document_Open", "Workbook_Open", "Auto_Open",
+      "Environ(", "Chr(", "ChrW(", "CallByName",
+      "VirtualAlloc", "RtlMoveMemory", "CreateThread",
+      "URLDownloadToFile", "XMLHTTP", "WinHttpRequest",
+      "Shell32", "Execute", "MacroSecurity"
+    ]
+  },
+
+  "T1059.007": {
+    "description": "JavaScript / VBScript malicious content",
+    "sources": [
+      "Custom — no equivalent SigmaHQ AMSI-content rule for JS/VBS buffer (2026-07)",
+      "https://learn.microsoft.com/en-us/windows/win32/amsi/how-amsi-helps"
+    ],
+    "patterns": [
+      "WScript.Shell", "Shell.Application", "ActiveXObject",
+      "CreateObject", "GetObject",
+      "eval(", "unescape(", "String.fromCharCode", "escape(",
+      "VBScript.Encode", "JScript.Encode",
+      "URLDownloadToFile", "XMLHTTP", "WinHttp",
+      "PowerShell", "cmd.exe", "certutil",
+      "RegExp(", "new Function("
+    ]
+  }
+}

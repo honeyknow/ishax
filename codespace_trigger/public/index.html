@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wake Up ISHA-X EDR</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #1e293b;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 400px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 20px;
+        }
+        button:hover { background: #2563eb; transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        button:disabled { background: #64748b; cursor: not-allowed; transform: none; }
+        
+        #status {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            min-height: 20px;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>🚀 ISHA-X Server Trigger</h2>
+        <p>Click below to boot up the GitHub Codespace (EDR Server).</p>
+        
+        <button id="wakeBtn" onclick="wakeServer()">Power ON Server</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function wakeServer() {
+            const btn = document.getElementById('wakeBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            btn.innerText = "Starting...";
+            status.innerHTML = "Sending wake signal to GitHub...";
+            status.className = "";
+
+            try {
+                const response = await fetch('/api/index');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    status.innerHTML = "✅ " + data.message;
+                    status.className = "success";
+                    btn.innerText = "Server is Booting";
+                } else {
+                    status.innerHTML = "❌ Error: " + (data.details?.message || data.error);
+                    status.className = "error";
+                    btn.disabled = false;
+                    btn.innerText = "Try Again";
+                }
+            } catch (err) {
+                status.innerHTML = "❌ Network Error.";
+                status.className = "error";
+                btn.disabled = false;
+                btn.innerText = "Try Again";
+            }
+        }
+    </script>
+</body>
+</html>

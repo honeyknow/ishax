@@ -1,0 +1,61 @@
+# PRIMARY signal for T1543.003: Windows service install events (System EID 7045 / Security EID 4697).
+# Per §6: ANY new service creation fires — no path gating.
+# Path/name is enrichment for confidence, not a gate (fixes prior "staging dir only" bug).
+# Adapted from:
+#   SigmaHQ: rules/windows/builtin/system/service_control_manager/win_system_service_install.yml
+#   SigmaHQ: rules/windows/builtin/security/win_security_service_install.yml
+# Custom modifications: removed staging-dir filter (was a gate in v1, now is enrichment only).
+# Confidence enrichment runs in detector.py enrich_service_confidence():
+#   HIGH  → binary path in staging dir (Temp/AppData/Downloads/Public)
+#          OR service name is short/random-looking
+#   MEDIUM → system-path binary in unusual service context (still emitted — don't drop)
+#
+# Works in conjunction with the existing cmdline rule (t1543-003-new-service.yml)
+# which catches sc.exe / New-Service via process_creation. Together they provide
+# broader coverage: this rule catches native service registration events.
+title: New Service Installation (System EID 7045 / Security EID 4697) — T1543.003 Primary
+id: e3f4a5b6-c7d8-9012-cdef-012345678903
+status: test
+description: >
+  Detects any new Windows service installation via System EID 7045 or Security EID 4697.
+  PRIMARY signal for T1543.003. No path filter — all new services fire.
+  Confidence enriched to HIGH if binary is in a staging directory or service name is
+  short/random. MEDIUM otherwise. Both confidence levels are emitted (§6 fix).
+author: Antigravity / ISHAX v2
+date: 2026/07/11
+references:
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/builtin/system/service_control_manager/win_system_service_install.yml
+  - https://attack.mitre.org/techniques/T1543/003/
+  - https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4697
+logsource:
+  product: windows
+detection:
+  # Match on service installation events — no path filter (§6)
+  selection_eid:
+    EventID:
+      - 7045   # System log: A new service was installed
+      - 4697   # Security log: A service was installed in the system
+
+  # Exclude known noisy legitimate installers that create well-known services
+  filter_known_safe:
+    ServiceName|contains:
+      - 'WinDefend'
+      - 'MsMpSvc'
+      - 'NisSrv'
+      - 'Sense'
+      - 'WdNisSvc'
+      - 'wuauserv'
+      - 'BITS'
+
+  condition: selection_eid and not filter_known_safe
+
+falsepositives:
+  - Any legitimate software installer creating new services (expected, high volume)
+  - Windows Update service registration
+  - AV / EDR products registering their own services
+level: medium   # starts MEDIUM; upgraded to HIGH by enrich_service_confidence() in detector.py
+
+tags:
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1543.003

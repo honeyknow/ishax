@@ -1,0 +1,92 @@
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>sha256</HashAlgorithms>
+  <CheckRevocation>False</CheckRevocation>
+  <EventFiltering>
+
+    <!-- EID 1: Process Creation (T1059.001 Layer B, T1036, T1543.003 cmdline layer) -->
+    <ProcessCreate onmatch="exclude">
+      <!-- Permissive — all process creation captured. Noise reduction via Sigma rules. -->
+    </ProcessCreate>
+
+    <!-- EID 3: Network Connection -->
+    <NetworkConnect onmatch="exclude">
+      <Image condition="end with">chrome.exe</Image>
+      <Image condition="end with">msedge.exe</Image>
+      <Image condition="end with">firefox.exe</Image>
+      <Image condition="end with">svchost.exe</Image>
+      <Image condition="end with">SearchHost.exe</Image>
+      <Image condition="end with">backgroundTaskHost.exe</Image>
+    </NetworkConnect>
+
+    <!-- EID 8: CreateRemoteThread -->
+    <CreateRemoteThread onmatch="exclude">
+      <!-- Capture all remote thread creations -->
+    </CreateRemoteThread>
+
+    <!-- EID 10: ProcessAccess (cross-process memory ops) -->
+    <ProcessAccess onmatch="include">
+      <GrantedAccess condition="is">0x1010</GrantedAccess>
+      <GrantedAccess condition="is">0x1038</GrantedAccess>
+      <GrantedAccess condition="is">0x1410</GrantedAccess>
+      <GrantedAccess condition="is">0x143a</GrantedAccess>
+      <GrantedAccess condition="is">0x1fffff</GrantedAccess>
+    </ProcessAccess>
+
+    <!--
+      EID 12, 13, 14: RegistryEvent
+      T1547.001 — Run key WRITE detection (§7).
+      IMPORTANT: Only EID 13 (SetValue) is relevant for T1547.001 detection.
+      The Sigma rule t1547-001-run-keys.yml filters EventID=13 explicitly.
+      Sysmon captures all registry event types for these paths — the Sigma
+      rule scopes down to writes only.
+
+      Full explicit paths listed (HKLM + HKCU + Wow6432Node) per §7 requirement.
+      Using 'contains' so both hives match regardless of HKLM/HKCU prefix,
+      since Sysmon normalises TargetObject to full canonical path.
+
+      VERIFICATION REQUIRED (§7): Before relying on this config, run:
+        endpoint\verify_t1547.ps1
+      Confirm TargetObject in EID 13 shows the Run key path (not a BAM/state path).
+      If wrong: check for duplicate <RegistryEvent> blocks and reload Sysmon config.
+    -->
+    <RegistryEvent onmatch="include">
+      <!-- T1547.001: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -->
+      <TargetObject condition="contains">\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\</TargetObject>
+      <!-- T1547.001: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce -->
+      <TargetObject condition="contains">\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\</TargetObject>
+      <!-- T1547.001: Wow6432Node (32-bit process compat) -->
+      <TargetObject condition="contains">\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run\</TargetObject>
+      <TargetObject condition="contains">\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce\</TargetObject>
+      <!-- T1547.001: Winlogon Shell hijack -->
+      <TargetObject condition="contains">\Winlogon\Shell</TargetObject>
+      <!-- T1543.003: Service registry keys (service config modifications) -->
+      <TargetObject condition="contains">\SYSTEM\CurrentControlSet\Services\</TargetObject>
+    </RegistryEvent>
+
+    <!-- EID 15: FileCreateStreamHash (MOTW) -->
+    <FileCreateStreamHash onmatch="exclude">
+      <!-- Monitor all MOTW streams — captures downloaded file mark-of-web -->
+    </FileCreateStreamHash>
+
+    <!-- EID 19, 20, 21: WmiEvent -->
+    <WmiEvent onmatch="exclude">
+      <!-- Capture all WMI subscription activities -->
+    </WmiEvent>
+
+    <!-- Explicitly disable unneeded event types to reduce noise -->
+    <!-- EID 11: FileCreate -->
+    <FileCreate onmatch="include">
+      <!-- T1547.001: Startup Folder Persistence (Catches files dropped here) -->
+      <TargetFilename condition="contains">\Start Menu\Programs\Startup\</TargetFilename>
+      <!-- T1027: Optional - Catch suspicious extension drops in Temp/Public if needed later -->
+    </FileCreate>
+    <DriverLoad onmatch="include"></DriverLoad>
+    <ImageLoad onmatch="include"></ImageLoad>
+    <RawAccessRead onmatch="include"></RawAccessRead>
+    <ProcessTerminate onmatch="exclude"></ProcessTerminate>
+    <PipeEvent onmatch="include"></PipeEvent>
+    <DnsQuery onmatch="include"></DnsQuery>
+    <FileDelete onmatch="include"></FileDelete>
+
+  </EventFiltering>
+</Sysmon>

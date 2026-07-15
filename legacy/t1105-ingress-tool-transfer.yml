@@ -1,0 +1,47 @@
+# Adapted from: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_certutil_download.yml
+# Locked variant: certutil.exe with urlcache/split/-f flags, or curl.exe with http URL.
+# Generic "certutil running" is too broad — must see download-specific flags to guard against False Alert (1).
+# Guarding against: Missing Logs (2) — Sysmon EID 3 and EID 15 (MOTW) were missing from prior config.
+title: Ingress Tool Transfer (Expanded LOLBins)
+id: d5675646-cd24-4903-875c-ce3d17db2705
+status: test
+description: Detects suspicious tool downloads using certutil, curl, bitsadmin, mshta, etc.
+author: Antigravity
+date: 2026/07/10
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_certutil:
+        Image|endswith: '\certutil.exe'
+        CommandLine|contains:
+            - 'urlcache'
+            - 'split'
+            - '-f'
+    
+    selection_curl:
+        Image|endswith: '\curl.exe'
+        CommandLine|contains: 'http'
+        
+    selection_bitsadmin:
+        Image|endswith: '\bitsadmin.exe'
+        CommandLine|contains: '/transfer'
+        
+    selection_wscript:
+        Image|endswith:
+            - '\wscript.exe'
+            - '\cscript.exe'
+        CommandLine|contains: 'http'
+        
+    selection_mshta:
+        Image|endswith: '\mshta.exe'
+        CommandLine|contains: 'http'
+        
+    condition: selection_certutil or selection_curl or selection_bitsadmin or selection_wscript or selection_mshta
+falsepositives:
+    - Legitimate certificate updates
+level: high
+
+tags:
+    - attack.command_and_control
+    - attack.t1105

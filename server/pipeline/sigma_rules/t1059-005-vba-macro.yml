@@ -1,0 +1,58 @@
+# CUSTOM RULE — No equivalent SigmaHQ AMSI-content rule exists for VBA buffers.
+# SigmaHQ has no logsource.service: amsi rules for T1059.005 as of 2026-07.
+# Rationale for custom: AMSI scans VBA macro content via VBE7.dll calling AmsiInitialize.
+# ContentName typically contains the Office document path (.docm/.xlsm etc.)
+# Detection implemented as Python AMSI Layer A in detector.py::check_amsi_layer()
+# Source for VBA AMSI integration:
+#   https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/office-macro-amsi
+#
+# NOTE: This YAML file is DISABLED in disabled_rules.json (pySigma cannot process
+# AMSI buffer content — detection runs via Python Layer A in detector.py).
+# This file serves as: documentation, Atomic Red Team test mapping, MITRE metadata.
+# AppName values for Office VBA observed via AmsiInitialize:
+#   "VBA", "Office 16.0", or document path — varies by Office version.
+#   Source: AMSI provider integration docs (learn.microsoft.com/windows/win32/amsi)
+#   Update: Testing VBS via cscript.exe in the lab yielded ZERO AMSI ETW events.
+#   Reason: The user's 'DisableScriptScanning $true' Defender policy physically
+#   disables WSH from invoking AMSI. For real testing, ScriptScanning MUST be enabled.
+title: VBA Office Macro Suspicious Content — T1059.005 (AMSI Layer A)
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567805
+status: test
+description: >
+  Detects malicious VBA macro content captured by AMSI (via VBE7.dll).
+  Matches patterns: CreateObject, Shell, WScript.Shell, PowerShell spawning,
+  VirtualAlloc/CreateThread shellcode patterns, suspicious download functions.
+  Detection implemented via Python AMSI Layer A — this YAML is documentation only.
+  Single-signal (no secondary cmdline layer for VBA). Confidence = HIGH on match.
+author: Antigravity / ISHAX v2 (custom — no SigmaHQ equivalent)
+date: 2026/07/11
+references:
+  - https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/office-macro-amsi
+  - https://attack.mitre.org/techniques/T1059/005/
+  - https://www.microsoft.com/en-us/security/blog/2018/09/12/office-vba-amsi-parting-the-veil-on-malicious-macros/
+logsource:
+  product: windows
+  service: ishax-amsi
+detection:
+  # Implemented via detector.py check_amsi_layer() — not by pySigma
+  # Patterns matched against decoded AMSI content buffer (UTF-16LE)
+  # Caller filter: process image in {winword.exe, excel.exe, powerpnt.exe, ...}
+  #             OR content_name contains Office doc extension
+  selection_amsi_caller:
+    Channel: 'ISHAX-AMSI'
+  selection_vba_patterns:
+    AmsiContentName|contains:
+      - '.docm'
+      - '.xlsm'
+      - '.xlam'
+      - '.dotm'
+      - '.pptm'
+      - 'VBA'
+  condition: selection_amsi_caller and selection_vba_patterns
+falsepositives:
+  - Legitimate macros using CreateObject for COM automation (allowlist by document hash)
+level: high
+
+tags:
+  - attack.execution
+  - attack.t1059.005
