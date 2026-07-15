@@ -20,8 +20,8 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
-from starlette.middleware.sessions import SessionMiddleware
+
+PHASE2_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pipeline"))
 sys.path.append(PHASE2_DIR)
 
 try:
@@ -747,7 +747,11 @@ def get_stats(request: Request):
 
 @app.get("/health")
 def get_health(request: Request):
-    conn, _ = get_tenant_db_for_request(request)
+    # Health check must not require auth because start_local.ps1 polls it on startup
+    try:
+        conn, _ = get_tenant_db_for_request(request)
+    except HTTPException:
+        conn = get_db()
     with conn:
         now_epoch = int(datetime.datetime.utcnow().timestamp())
         events = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
