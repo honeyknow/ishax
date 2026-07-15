@@ -1650,8 +1650,21 @@ async def _wazuh_register_agent(agent_name: str) -> tuple[str, str]:
             json={"name": agent_name},
         )
         r.raise_for_status()
-        data = r.json()["data"]["additionalProperties"]
-        return data["id"], data["key"]
+        resp_json = r.json()
+        data = resp_json.get("data", {})
+        
+        # Wazuh 4.8 structure
+        if "id" in data and "key" in data:
+            return data["id"], data["key"]
+        
+        # Alternative structure (array of affected items)
+        if "affected_items" in data and len(data["affected_items"]) > 0:
+            item = data["affected_items"][0]
+            if "id" in item and "key" in item:
+                return item["id"], item["key"]
+                
+        # If both fail, raise descriptive error
+        raise ValueError(f"Unexpected Wazuh API response: {resp_json}")
 
 
 async def _wazuh_delete_agent(agent_id: str):
