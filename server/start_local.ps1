@@ -114,6 +114,27 @@ if (-not (Test-Command "python")) { Write-Fail "Python is not installed or not i
 if (-not (Test-Command "npm") -and -not (Test-Command "npm.cmd")) { Write-Fail "npm is not installed or not in PATH."; exit 1 }
 Write-Ok "Required commands found."
 
+Write-Host "  Cleaning up existing processes and ports..." -ForegroundColor DarkGray
+Stop-ProcessTreeFromPidFile (Join-Path $PIPELINE_DIR "ingestor.pid") "Ingestor"
+Stop-ProcessTreeFromPidFile (Join-Path $BACKEND_DIR "backend.pid") "Backend API"
+Stop-ProcessTreeFromPidFile (Join-Path $FRONTEND_DIR "frontend.pid") "Frontend UI"
+Stop-OrphanProjectProcesses
+
+function Kill-Port($port) {
+    $conns = netstat -ano | findstr ":$port"
+    foreach ($conn in $conns) {
+        $parts = $conn.Trim() -split '\s+'
+        if ($parts[-1] -match '^\d+$') {
+            $pidToKill = $parts[-1]
+            if ($pidToKill -ne "0") {
+                taskkill.exe /PID $pidToKill /T /F > $null 2>&1
+            }
+        }
+    }
+}
+Kill-Port $BackendPort
+Kill-Port $FrontendPort
+
 docker info > $null 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Docker is installed but the daemon is not running. Start Docker Desktop first."
