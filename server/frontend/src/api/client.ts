@@ -2,12 +2,13 @@ import axios from 'axios'
 
 const http = axios.create({ baseURL: '/' })
 
-// 401 interceptor: redirect to login page
+// 401 interceptor: redirect to login page if unauthorized
 http.interceptors.response.use(
   r => r,
   err => {
-    if (err.response?.status === 401) {
-      window.location.href = '/auth/login'
+    // Only redirect if it's a 401 and we aren't currently on the login page
+    if (err.response?.status === 401 && window.location.pathname !== '/login') {
+      window.location.href = '/login'
     }
     return Promise.reject(err)
   }
@@ -252,8 +253,9 @@ export const api = {
     }).then(r => r.data),
 
   /** Returns logged-in user's identity and role. */
-  getMe: () =>
-    http.get<{ authenticated: boolean; email: string; role: 'admin' | 'user'; tenant?: Record<string, unknown> }>('/auth/me').then(r => r.data),
+  getMe: () => http.get('/auth/me').then(r => r.data),
+  login: (email: string, password: string) => http.post('/auth/login', { email, password }).then(r => r.data),
+  logout: () => http.post('/auth/logout').then(r => r.data),
 
   /** Returns all agents registered to the current tenant. */
   getAgents: (impersonateTenantId?: string) =>
@@ -336,11 +338,10 @@ export const api = {
     http.get<Array<{ email: string; added_by: string; added_at: number; note: string }>>('/admin/allowed-users').then(r => r.data),
 
   /** Admin: add an email to the whitelist. No restart needed. */
-  adminAddAllowedUser: (email: string, note = '') =>
-    http.post<{ status: string; email: string }>('/admin/allowed-users', { email, note }).then(r => r.data),
+  adminAddAllowedUser: (email: string, password?: string, note?: string) =>
+    http.post<{ status: string; email: string }>('/admin/allowed-users', { email, password, note }).then(r => r.data),
 
   /** Admin: remove an email from the whitelist. Cannot remove super-admin. */
   adminRemoveAllowedUser: (email: string) =>
     http.delete<{ status: string; email: string }>(`/admin/allowed-users/${encodeURIComponent(email)}`).then(r => r.data),
 }
-

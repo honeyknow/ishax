@@ -33,6 +33,7 @@ import time
 import uuid
 from pathlib import Path
 from threading import Lock
+import hashlib
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -74,6 +75,13 @@ class TenantManager:
         con.execute("PRAGMA foreign_keys=ON")
         if MASTER_SCHEMA.exists():
             con.executescript(MASTER_SCHEMA.read_text())
+            
+        # Migration: Add password_hash if it doesn't exist
+        try:
+            con.execute("ALTER TABLE allowed_users ADD COLUMN password_hash TEXT")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+            
         con.commit()
         print(f"[TenantManager] master.db opened at {MASTER_DB_PATH}", flush=True)
         return con
@@ -375,7 +383,7 @@ class TenantManager:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def add_allowed_user(self, email: str, added_by: str = "admin", note: str = "") -> dict:
+    def add_allowed_user(self, email: str, password: str = "", added_by: str = "admin", note: str = "") -> dict:
         """
         Add an email to the whitelist.
         Returns the new row dict.
@@ -384,6 +392,9 @@ class TenantManager:
         email = email.strip().lower()
         if not email or "@" not in email:
             raise ValueError(f"Invalid email: {email!r}")
+            
+        password_hash = hashlib.sha256(password.encode()).hexdigest() if password else ""
+        
         with self._lock:
             existing = self._master.execute(
                 "SELECT email FROM allowed_users WHERE email = ?", (email,)
@@ -391,12 +402,25 @@ class TenantManager:
             if existing:
                 raise ValueError(f"{email} is already whitelisted.")
             self._master.execute(
-                "INSERT INTO allowed_users (email, added_by, note) VALUES (?, ?, ?)",
-                (email, added_by, note or ""),
+                "INSERT INTO allowed_users (email, password_hash, added_by, note) VALUES (?, ?, ?, ?)",
+                (email, password_hash, added_by, note or ""),
             )
             self._master.commit()
             print(f"[TenantManager] Allowed user added: {email} (by {added_by})", flush=True)
         return {"email": email, "added_by": added_by, "note": note}
+
+    def verify_user_password(self, email: str, password: str) -> bool:
+        """Verify the password of an allowed user."""
+        email = email.strip().lower()
+        row = self._master.execute(
+            "SELECT password_hash FROM allowed_users WHERE email = ?", (email,)
+        ).fetchone()
+        
+        if not row or not row["password_hash"]:
+            return False
+            
+        computed_hash = hashlib.sha256(password.encode()).hexdigest()
+        return computed_hash == row["password_hash"]
 
     def remove_allowed_user(self, email: str) -> bool:
         """

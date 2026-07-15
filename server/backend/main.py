@@ -20,9 +20,8 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
-from authlib.integrations.starlette_client import OAuth
-
-PHASE2_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pipeline"))
+from fastapi.responses import FileResponse, RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 sys.path.append(PHASE2_DIR)
 
 try:
@@ -48,23 +47,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ---------------------------------------------------------------------------
-# Google OAuth setup
-# ---------------------------------------------------------------------------
-_GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
-_GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-_oauth_enabled = bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET)
-
-oauth = OAuth()
-if _oauth_enabled:
-    oauth.register(
-        name="google",
-        client_id=_GOOGLE_CLIENT_ID,
-        client_secret=_GOOGLE_CLIENT_SECRET,
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
 
 # ---------------------------------------------------------------------------
 # Deploy config
@@ -128,7 +110,7 @@ def _is_allowed(email: str) -> bool:
     Check if email is permitted to login.
     1. Super-admin is always allowed (no DB needed).
     2. Otherwise check master.db allowed_users table (live, no restart needed).
-    3. Fallback: check ALLOWED_EMAILS env var (legacy compat).
+    3. Fallback: check ADMIN_EMAILS env var (legacy compat).
     """
     if email == ADMIN_EMAIL:
         return True
@@ -136,71 +118,43 @@ def _is_allowed(email: str) -> bool:
     if mgr:
         return mgr.is_email_allowed(email)
     # Fallback if TenantManager not running (single-tenant lab mode)
-    env_list = list(filter(None, os.environ.get("ALLOWED_EMAILS", "").split(",")))
+    env_list = list(filter(None, os.environ.get("ADMIN_EMAILS", "").split(",")))
     return email in [e.strip().lower() for e in env_list]
 
 
 # ---------------------------------------------------------------------------
-# Auth routes (Google OAuth)
+# Auth routes (Custom Login)
 # ---------------------------------------------------------------------------
 
-@app.get("/auth/login")
-async def auth_login(request: Request):
-    """Redirect user to Google login page."""
-    if not _oauth_enabled:
-        # Dev mode: auto-login as admin
-        request.session["user_email"] = ADMIN_EMAIL
-        return RedirectResponse("/")
-    
-    # If FRONTEND_ORIGIN is set, force the redirect URI to match it.
-    # This prevents redirect_uri_mismatch errors when running behind reverse proxies (like Vite/Codespaces)
-    # that rewrite the Host header to localhost.
-    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "").rstrip("/")
-    if frontend_origin and frontend_origin != "*":
-        redirect_uri = f"{frontend_origin}/auth/callback"
-    else:
-        redirect_uri = str(request.url_for("auth_callback"))
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/auth/login")
+async def auth_login(req: LoginRequest, request: Request):
+    """Verify email and password."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(400, "Email is required.")
         
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    
+    if email == ADMIN_EMAIL:
+        if not admin_password or req.password != admin_password:
+            raise HTTPException(401, "Invalid email or password.")
+    else:
+        mgr = _get_saas_manager()
+        if not mgr or not mgr.verify_user_password(email, req.password):
+            raise HTTPException(401, "Invalid email or password.")
 
+    request.session["user_email"] = email
+    role = "admin" if email == ADMIN_EMAIL else "user"
+    return {"authenticated": True, "email": email, "role": role}
 
-@app.get("/auth/callback", name="auth_callback")
-async def auth_callback(request: Request):
-    """Google redirects here after successful login."""
-    if not _oauth_enabled:
-        return RedirectResponse("/")
-    try:
-        token = await oauth.google.authorize_access_token(request)
-        user_info = token.get("userinfo") or {}
-        email = (user_info.get("email") or "").lower().strip()
-        if not email:
-            raise HTTPException(400, "Could not retrieve email from Google.")
-        if not _is_allowed(email):
-            return Response(
-                content=(
-                    f"<html><body style='font-family:sans-serif;background:#0d0d0f;color:#fff;display:flex;"
-                    f"align-items:center;justify-content:center;height:100vh;flex-direction:column'>"
-                    f"<h2 style='color:#ef4444'>403 — Access Denied</h2>"
-                    f"<p>Your account (<b>{email}</b>) is not authorized.</p>"
-                    f"<p style='color:#888'>Contact <b>info.honeyknows@gmail.com</b> to request access.</p>"
-                    f"</body></html>"
-                ),
-                media_type="text/html",
-                status_code=403,
-            )
-        request.session["user_email"] = email
-        return RedirectResponse("/")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"OAuth callback failed: {e}")
-
-
-@app.get("/auth/logout")
+@app.post("/auth/logout")
 async def auth_logout(request: Request):
     request.session.clear()
-    return RedirectResponse("/auth/login")
-
+    return {"authenticated": False}
 
 @app.get("/auth/me")
 def auth_me(request: Request):
@@ -211,18 +165,13 @@ def auth_me(request: Request):
     role = "admin" if email == ADMIN_EMAIL else "user"
     return {"authenticated": True, "email": email, "role": role}
 
-
 def get_current_user(request: Request) -> dict:
     """
     Returns authenticated user dict. Raises 401 if not logged in.
-    In dev mode (no GOOGLE_CLIENT_ID set), auto-logs in as admin.
     """
-    if not _oauth_enabled:
-        email = ADMIN_EMAIL  # Dev mode fallback — auto admin
-    else:
-        email = request.session.get("user_email")
-        if not email:
-            raise HTTPException(status_code=401, detail="Not authenticated. Please login at /auth/login")
+    email = request.session.get("user_email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Not authenticated. Please login.")
     role = "admin" if email == ADMIN_EMAIL else "user"
     mgr = _get_saas_manager()
     tenant = None
@@ -1857,6 +1806,7 @@ def admin_get_allowed_users(request: Request):
 
 class AllowUserRequest(BaseModel):
     email: str
+    password: str = ""
     note: str = ""
 
 
@@ -1872,6 +1822,7 @@ def admin_add_allowed_user(body: AllowUserRequest, request: Request):
     try:
         result = mgr.add_allowed_user(
             email=body.email,
+            password=body.password,
             added_by=user["email"],
             note=body.note,
         )

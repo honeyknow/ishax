@@ -50,13 +50,14 @@ CREATE INDEX IF NOT EXISTS idx_agents_revoked  ON agents(is_revoked);
 -- Managed via Admin Panel UI — no code change or restart needed.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS allowed_users (
-    email       TEXT PRIMARY KEY,                -- Google email (lowercase)
-    added_by    TEXT NOT NULL DEFAULT 'admin',  -- Who granted access
-    added_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    note        TEXT                             -- Optional label: "User 1 - Rahul"
+    email         TEXT PRIMARY KEY,                -- User email (lowercase)
+    password_hash TEXT,                            -- Password hash
+    added_by      TEXT NOT NULL DEFAULT 'admin',   -- Who granted access
+    added_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    note          TEXT                             -- Optional label: "User 1 - Rahul"
 );
 
--- Pre-seed the admin email so it always appears in the list
+-- Pre-seed the admin email so it always appears in the list (password checked via .env)
 INSERT OR IGNORE INTO allowed_users (email, added_by, note)
 VALUES ('info.honeyknows@gmail.com', 'system', 'Super Admin — cannot be removed');
 

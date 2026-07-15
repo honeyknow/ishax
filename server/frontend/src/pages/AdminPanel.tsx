@@ -69,6 +69,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
   // Whitelist state
   const [allowedUsers, setAllowedUsers] = useState<AllowedUser[]>([])
   const [newEmail, setNewEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [newNote, setNewNote] = useState('')
   const [addingUser, setAddingUser] = useState(false)
   const [addError, setAddError] = useState('')
@@ -98,8 +99,9 @@ export default function AdminPanel({ onImpersonate }: Props) {
     setAddingUser(true)
     setAddError('')
     try {
-      await api.adminAddAllowedUser(email, newNote.trim())
+      await api.adminAddAllowedUser(email, newPassword, newNote.trim())
       setNewEmail('')
+      setNewPassword('')
       setNewNote('')
       const updated = await api.adminGetAllowedUsers()
       setAllowedUsers(updated)
@@ -278,9 +280,9 @@ export default function AdminPanel({ onImpersonate }: Props) {
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
             <UserPlus size={14} color="var(--text-3)" />
-            Access Whitelist — Who Can Login
+            Access Management — Create Users
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{allowedUsers.length} user{allowedUsers.length !== 1 ? 's' : ''} allowed</span>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{allowedUsers.length} user{allowedUsers.length !== 1 ? 's' : ''} total</span>
         </div>
 
         {/* Add user form */}
@@ -299,8 +301,20 @@ export default function AdminPanel({ onImpersonate }: Props) {
             }}
           />
           <input
+            type="password"
+            placeholder="Password (for login)"
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddUser()}
+            style={{
+              flex: '1 1 140px', padding: '7px 12px', borderRadius: 7, fontSize: 13,
+              background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text)',
+              outline: 'none',
+            }}
+          />
+          <input
             type="text"
-            placeholder="Note (optional, e.g. Rahul's PC)"
+            placeholder="Note (e.g. Rahul's Account)"
             value={newNote}
             onChange={e => setNewNote(e.target.value)}
             style={{

@@ -5,6 +5,7 @@ import ThreatHunt from './pages/ThreatHunt'
 import Firehose from './pages/Firehose'
 import RulesEngine from './pages/RulesEngine'
 import AdminPanel from './pages/AdminPanel'
+import { Login } from './pages/Login'
 import AIPanel from './components/AIPanel'
 import { useState, useEffect } from 'react'
 import { api } from './api/client'
@@ -30,21 +31,23 @@ export default function App() {
   // Admin impersonation: when admin views a specific tenant's dashboard
   const [impersonateTenantId, setImpersonateTenantId] = useState<string | null>(null)
   const [impersonateEmail, setImpersonateEmail] = useState<string | null>(null)
+  
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
-  // Load user identity on mount — redirect to login if not authenticated
+  // Load user identity on mount
   useEffect(() => {
     api.getMe()
       .then(me => {
         if (!me.authenticated) {
-          window.location.href = '/auth/login'
+          setIsCheckingAuth(false)
           return
         }
         setUser({ email: me.email, role: me.role, tenant: me.tenant ?? null })
         if (me.role === 'admin') setView('admin')
+        setIsCheckingAuth(false)
       })
       .catch(() => {
-        // If /auth/me fails entirely (network error in dev), stay on page
-        // The 401 interceptor will redirect if it's an auth failure
+        setIsCheckingAuth(false)
       })
   }, [])
 
@@ -82,8 +85,20 @@ export default function App() {
     window.location.href = '/auth/logout'
   }
 
+  if (isCheckingAuth) {
+    return <div style={{ height: '100vh', background: '#0d0d0f' }} />
+  }
+
+  if (!user || window.location.pathname === '/login') {
+    return <Login onLoginSuccess={(u) => {
+      setUser(u)
+      window.history.pushState({}, '', '/')
+      if (u.role === 'admin') setView('admin')
+    }} />
+  }
+
   return (
-    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-1)', overflow: 'hidden' }}>
       <Topbar
         view={view}
         onViewChange={setView}
@@ -127,9 +142,6 @@ export default function App() {
 
       <div className="main-layout" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div className="page-content" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {view === 'admin'    && user?.role === 'admin' && !impersonateTenantId &&
-            <AdminPanel onImpersonate={handleImpersonate} />
-          }
           {view === 'overview' && <Overview
             onHostClick={handleNavigateToHunt}
             impersonateTenantId={impersonateTenantId ?? undefined}
@@ -137,6 +149,9 @@ export default function App() {
           {view === 'hunt'     && <ThreatHunt initialHost={huntHost} />}
           {view === 'firehose' && <Firehose />}
           {view === 'rules'    && <RulesEngine />}
+          {view === 'admin'    && user?.role === 'admin' && !impersonateTenantId &&
+            <AdminPanel onImpersonate={handleImpersonate} />
+          }
         </div>
       </div>
 
