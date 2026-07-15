@@ -5,8 +5,8 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 set "ROOT=%~dp0"
-set "BACKEND_PORT=8000"
-set "FRONTEND_PORT=5173"
+set "BACKEND_PORT=8001"
+set "FRONTEND_PORT=5174"
 
 echo.
 echo ============================================================
