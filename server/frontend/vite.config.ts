@@ -10,10 +10,9 @@ export default defineConfig({
     port: devPort,
     allowedHosts: true,
     proxy: {
-      '/api': {
+      '^/(auth|alerts|stats|rules|admin|deploy|threatintel|tenant|health)(/.*)?$': {
         target: apiTarget,
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
