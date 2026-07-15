@@ -1744,6 +1744,8 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
             "amsi_watcher.exe",
             "sysmon_config.xml",
             "ISHAX_Setup.iss",
+            "isolate.ps1",
+            "unisolate.ps1",
         ]
         missing = [f for f in required if not os.path.isfile(os.path.join(ENDPOINT_SRC, f))]
         if missing:
