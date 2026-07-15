@@ -118,8 +118,26 @@ def _get_saas_manager():
     return _saas_manager
 
 
-ADMIN_EMAILS = ["info.honeyknows@gmail.com"]
-ALLOWED_EMAILS = ADMIN_EMAILS + list(filter(None, os.environ.get("ALLOWED_EMAILS", "").split(",")))
+# Super-admin is hardcoded and can never be locked out
+ADMIN_EMAIL = "info.honeyknows@gmail.com"
+ADMIN_EMAILS = [ADMIN_EMAIL]   # keep as list for compat
+
+
+def _is_allowed(email: str) -> bool:
+    """
+    Check if email is permitted to login.
+    1. Super-admin is always allowed (no DB needed).
+    2. Otherwise check master.db allowed_users table (live, no restart needed).
+    3. Fallback: check ALLOWED_EMAILS env var (legacy compat).
+    """
+    if email == ADMIN_EMAIL:
+        return True
+    mgr = _get_saas_manager()
+    if mgr:
+        return mgr.is_email_allowed(email)
+    # Fallback if TenantManager not running (single-tenant lab mode)
+    env_list = list(filter(None, os.environ.get("ALLOWED_EMAILS", "").split(",")))
+    return email in [e.strip().lower() for e in env_list]
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +149,7 @@ async def auth_login(request: Request):
     """Redirect user to Google login page."""
     if not _oauth_enabled:
         # Dev mode: auto-login as admin
-        request.session["user_email"] = ADMIN_EMAILS[0]
+        request.session["user_email"] = ADMIN_EMAIL
         return RedirectResponse("/")
     redirect_uri = str(request.url_for("auth_callback"))
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -148,14 +166,23 @@ async def auth_callback(request: Request):
         email = (user_info.get("email") or "").lower().strip()
         if not email:
             raise HTTPException(400, "Could not retrieve email from Google.")
-        if email not in ALLOWED_EMAILS:
+        if not _is_allowed(email):
             return Response(
-                content=f"<h2>403 — Access Denied</h2><p>Your account (<b>{email}</b>) is not authorized. Contact the admin.</p>",
+                content=(
+                    f"<html><body style='font-family:sans-serif;background:#0d0d0f;color:#fff;display:flex;"
+                    f"align-items:center;justify-content:center;height:100vh;flex-direction:column'>"
+                    f"<h2 style='color:#ef4444'>403 — Access Denied</h2>"
+                    f"<p>Your account (<b>{email}</b>) is not authorized.</p>"
+                    f"<p style='color:#888'>Contact <b>info.honeyknows@gmail.com</b> to request access.</p>"
+                    f"</body></html>"
+                ),
                 media_type="text/html",
                 status_code=403,
             )
         request.session["user_email"] = email
         return RedirectResponse("/")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"OAuth callback failed: {e}")
 
@@ -172,7 +199,7 @@ def auth_me(request: Request):
     email = request.session.get("user_email")
     if not email:
         return {"authenticated": False}
-    role = "admin" if email in ADMIN_EMAILS else "user"
+    role = "admin" if email == ADMIN_EMAIL else "user"
     return {"authenticated": True, "email": email, "role": role}
 
 
@@ -182,13 +209,12 @@ def get_current_user(request: Request) -> dict:
     In dev mode (no GOOGLE_CLIENT_ID set), auto-logs in as admin.
     """
     if not _oauth_enabled:
-        # Dev mode fallback — auto admin
-        email = ADMIN_EMAILS[0]
+        email = ADMIN_EMAIL  # Dev mode fallback — auto admin
     else:
         email = request.session.get("user_email")
         if not email:
             raise HTTPException(status_code=401, detail="Not authenticated. Please login at /auth/login")
-    role = "admin" if email in ADMIN_EMAILS else "user"
+    role = "admin" if email == ADMIN_EMAIL else "user"
     mgr = _get_saas_manager()
     tenant = None
     if mgr:
@@ -1805,6 +1831,65 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
 # ---------------------------------------------------------------------------
 # Admin API endpoints
 # ---------------------------------------------------------------------------
+
+# ---- Whitelist management ----
+
+@app.get("/admin/allowed-users")
+def admin_get_allowed_users(request: Request):
+    """List all whitelisted emails. Admin only."""
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    return mgr.get_allowed_users()
+
+
+class AllowUserRequest(BaseModel):
+    email: str
+    note: str = ""
+
+
+@app.post("/admin/allowed-users")
+def admin_add_allowed_user(body: AllowUserRequest, request: Request):
+    """Add an email to the whitelist. Admin only. No server restart needed."""
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    try:
+        result = mgr.add_allowed_user(
+            email=body.email,
+            added_by=user["email"],
+            note=body.note,
+        )
+        return {"status": "added", **result}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/admin/allowed-users/{email:path}")
+def admin_remove_allowed_user(email: str, request: Request):
+    """Remove an email from the whitelist. Cannot remove super-admin. Admin only."""
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    email = email.strip().lower()
+    if email == ADMIN_EMAIL:
+        raise HTTPException(400, "Cannot remove the super-admin account.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    removed = mgr.remove_allowed_user(email)
+    if not removed:
+        raise HTTPException(404, f"{email} not found in whitelist.")
+    return {"status": "removed", "email": email}
+
+
+# ---- Tenant management ----
 
 @app.get("/admin/tenants")
 def admin_get_tenants(request: Request):

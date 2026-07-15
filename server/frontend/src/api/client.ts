@@ -328,5 +328,19 @@ export const api = {
     link.click()
     document.body.removeChild(link)
   },
+
+  // Whitelist management -------------------------------------------------------
+
+  /** Admin: get all whitelisted emails. */
+  adminGetAllowedUsers: () =>
+    http.get<Array<{ email: string; added_by: string; added_at: number; note: string }>>('/admin/allowed-users').then(r => r.data),
+
+  /** Admin: add an email to the whitelist. No restart needed. */
+  adminAddAllowedUser: (email: string, note = '') =>
+    http.post<{ status: string; email: string }>('/admin/allowed-users', { email, note }).then(r => r.data),
+
+  /** Admin: remove an email from the whitelist. Cannot remove super-admin. */
+  adminRemoveAllowedUser: (email: string) =>
+    http.delete<{ status: string; email: string }>(`/admin/allowed-users/${encodeURIComponent(email)}`).then(r => r.data),
 }
 

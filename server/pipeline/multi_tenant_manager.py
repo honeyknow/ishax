@@ -351,6 +351,68 @@ class TenantManager:
             })
         return result
 
+    # ------------------------------------------------------------------
+    # Public API — Allowed-user whitelist (replaces ALLOWED_EMAILS env var)
+    # ------------------------------------------------------------------
+
+    def is_email_allowed(self, email: str) -> bool:
+        """
+        Check if an email is in the whitelist.
+        The super-admin email is always allowed regardless.
+        """
+        email = email.strip().lower()
+        if email == "info.honeyknows@gmail.com":
+            return True
+        row = self._master.execute(
+            "SELECT 1 FROM allowed_users WHERE email = ?", (email,)
+        ).fetchone()
+        return row is not None
+
+    def get_allowed_users(self) -> list[dict]:
+        """Return all whitelisted emails with metadata."""
+        rows = self._master.execute(
+            "SELECT email, added_by, added_at, note FROM allowed_users ORDER BY added_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_allowed_user(self, email: str, added_by: str = "admin", note: str = "") -> dict:
+        """
+        Add an email to the whitelist.
+        Returns the new row dict.
+        Raises ValueError if email already exists.
+        """
+        email = email.strip().lower()
+        if not email or "@" not in email:
+            raise ValueError(f"Invalid email: {email!r}")
+        with self._lock:
+            existing = self._master.execute(
+                "SELECT email FROM allowed_users WHERE email = ?", (email,)
+            ).fetchone()
+            if existing:
+                raise ValueError(f"{email} is already whitelisted.")
+            self._master.execute(
+                "INSERT INTO allowed_users (email, added_by, note) VALUES (?, ?, ?)",
+                (email, added_by, note or ""),
+            )
+            self._master.commit()
+            print(f"[TenantManager] Allowed user added: {email} (by {added_by})", flush=True)
+        return {"email": email, "added_by": added_by, "note": note}
+
+    def remove_allowed_user(self, email: str) -> bool:
+        """
+        Remove an email from the whitelist.
+        Returns False if the email is the super-admin (cannot be removed) or not found.
+        """
+        email = email.strip().lower()
+        if email == "info.honeyknows@gmail.com":
+            return False  # Super-admin is permanent
+        with self._lock:
+            cur = self._master.execute(
+                "DELETE FROM allowed_users WHERE email = ?", (email,)
+            )
+            self._master.commit()
+        return cur.rowcount > 0
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton — import this in ingestor.py and main.py

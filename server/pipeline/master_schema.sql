@@ -42,3 +42,21 @@ CREATE TABLE IF NOT EXISTS agents (
 
 CREATE INDEX IF NOT EXISTS idx_agents_tenant   ON agents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_agents_revoked  ON agents(is_revoked);
+
+-- ---------------------------------------------------------------------------
+-- allowed_users
+-- Whitelist of emails permitted to login via Google OAuth.
+-- Admin email (info.honeyknows@gmail.com) is ALWAYS allowed regardless.
+-- Managed via Admin Panel UI — no code change or restart needed.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS allowed_users (
+    email       TEXT PRIMARY KEY,                -- Google email (lowercase)
+    added_by    TEXT NOT NULL DEFAULT 'admin',  -- Who granted access
+    added_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    note        TEXT                             -- Optional label: "User 1 - Rahul"
+);
+
+-- Pre-seed the admin email so it always appears in the list
+INSERT OR IGNORE INTO allowed_users (email, added_by, note)
+VALUES ('info.honeyknows@gmail.com', 'system', 'Super Admin — cannot be removed');
+

@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import { Shield, Users, Database, Cpu, HardDrive, MemoryStick, Trash2, Eye, RefreshCw, Activity } from 'lucide-react'
+import { Shield, Users, Database, Cpu, HardDrive, MemoryStick, Trash2, Eye, RefreshCw, Activity, UserPlus, UserMinus, Lock } from 'lucide-react'
+
+interface AllowedUser {
+  email: string
+  added_by: string
+  added_at: number
+  note: string
+}
 
 interface Tenant {
   id: string
@@ -59,20 +66,56 @@ export default function AdminPanel({ onImpersonate }: Props) {
   const [error, setError] = useState('')
   const [confirmPurge, setConfirmPurge] = useState<string | null>(null)
 
+  // Whitelist state
+  const [allowedUsers, setAllowedUsers] = useState<AllowedUser[]>([])
+  const [newEmail, setNewEmail] = useState('')
+  const [newNote, setNewNote] = useState('')
+  const [addingUser, setAddingUser] = useState(false)
+  const [addError, setAddError] = useState('')
+
   const load = async () => {
     setLoading(true)
     setError('')
     try {
-      const [tenantsRes, healthRes] = await Promise.all([
+      const [tenantsRes, healthRes, allowedRes] = await Promise.all([
         api.adminGetTenants(),
         api.getHealth(),
+        api.adminGetAllowedUsers(),
       ])
       setTenants(tenantsRes)
       if (healthRes.system_stats) setSysStats(healthRes.system_stats)
+      setAllowedUsers(allowedRes)
     } catch (e: unknown) {
       setError('Failed to load admin data. Are you authenticated as admin?')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAddUser = async () => {
+    const email = newEmail.trim().toLowerCase()
+    if (!email || !email.includes('@')) { setAddError('Enter a valid email'); return }
+    setAddingUser(true)
+    setAddError('')
+    try {
+      await api.adminAddAllowedUser(email, newNote.trim())
+      setNewEmail('')
+      setNewNote('')
+      const updated = await api.adminGetAllowedUsers()
+      setAllowedUsers(updated)
+    } catch (e: unknown) {
+      setAddError(e instanceof Error ? e.message : 'Failed to add user.')
+    } finally {
+      setAddingUser(false)
+    }
+  }
+
+  const handleRemoveUser = async (email: string) => {
+    try {
+      await api.adminRemoveAllowedUser(email)
+      setAllowedUsers(prev => prev.filter(u => u.email !== email))
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to remove user.')
     }
   }
 
@@ -95,6 +138,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
   const totalAgents = tenants.reduce((s, t) => s + t.agent_count, 0)
   const totalDbSize = tenants.reduce((s, t) => s + t.db_size_bytes, 0)
   const activeTenants = tenants.filter(t => t.is_active).length
+  const maxDbSize = Math.max(...tenants.map(t => t.db_size_bytes), 1)
 
   return (
     <div style={{ padding: '20px 24px', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -158,7 +202,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
       <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Users size={14} color="var(--text-3)" />
-          Registered Tenants
+          Registered Tenants — Data Usage
         </div>
         {loading ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Loading...</div>
@@ -168,7 +212,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--bg-3)' }}>
-                {['Email', 'Status', 'Agents', 'DB Size', 'Last Login', 'Actions'].map(h => (
+                {['Email', 'Status', 'Agents', 'DB Size', 'Usage', 'Last Login', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '8px 14px', textAlign: 'left', color: 'var(--text-3)', fontWeight: 600, fontSize: 11, letterSpacing: '0.5px', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -191,32 +235,31 @@ export default function AdminPanel({ onImpersonate }: Props) {
                   </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-2)', fontWeight: 700 }}>{t.agent_count}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-2)' }}>{fmtBytes(t.db_size_bytes)}</td>
+                  {/* Per-user usage bar relative to largest tenant */}
+                  <td style={{ padding: '10px 14px', minWidth: 100 }}>
+                    <div style={{ height: 6, background: 'var(--bg-4)', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${Math.round((t.db_size_bytes / maxDbSize) * 100)}%`,
+                        height: '100%',
+                        background: t.db_size_bytes > 50_000_000 ? '#ef4444' : t.db_size_bytes > 10_000_000 ? '#f59e0b' : '#6366f1',
+                        borderRadius: 99,
+                        transition: 'width 0.5s',
+                      }} />
+                    </div>
+                  </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-3)', fontSize: 12 }}>{fmtDate(t.last_login)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {/* View Dashboard (Impersonate) */}
-                      <button
-                        onClick={() => onImpersonate(t.id, t.email)}
-                        title="View their dashboard"
-                        style={actionBtn('var(--accent)')}
-                      >
-                        <Eye size={13} />
-                        View
+                      <button onClick={() => onImpersonate(t.id, t.email)} title="View their dashboard" style={actionBtn('var(--accent)')}>
+                        <Eye size={13} /> View
                       </button>
-                      {/* Export DB */}
-                      <button
-                        onClick={() => api.adminExportTenantDb(t.id)}
-                        title="Download their raw SQLite DB file"
-                        style={actionBtn('#22c55e')}
-                      >
-                        <Database size={13} />
-                        Export DB
+                      <button onClick={() => api.adminExportTenantDb(t.id)} title="Download their raw SQLite DB" style={actionBtn('#22c55e')}>
+                        <Database size={13} /> Export
                       </button>
-                      {/* Purge */}
                       <button
                         onClick={() => handlePurge(t.id)}
                         disabled={purging === t.id}
-                        title={confirmPurge === t.id ? 'Click again to confirm — IRREVERSIBLE' : 'Permanently delete tenant and their data'}
+                        title={confirmPurge === t.id ? 'Click again to confirm — IRREVERSIBLE' : 'Permanently delete tenant'}
                         style={actionBtn(confirmPurge === t.id ? '#ef4444' : '#e57373')}
                       >
                         <Trash2 size={13} />
@@ -230,6 +273,107 @@ export default function AdminPanel({ onImpersonate }: Props) {
           </table>
         )}
       </div>
+
+      {/* Whitelist Management */}
+      <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
+            <UserPlus size={14} color="var(--text-3)" />
+            Access Whitelist — Who Can Login
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{allowedUsers.length} user{allowedUsers.length !== 1 ? 's' : ''} allowed</span>
+        </div>
+
+        {/* Add user form */}
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <input
+            id="whitelist-email-input"
+            type="email"
+            placeholder="user@gmail.com"
+            value={newEmail}
+            onChange={e => setNewEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddUser()}
+            style={{
+              flex: '1 1 200px', padding: '7px 12px', borderRadius: 7, fontSize: 13,
+              background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text)',
+              outline: 'none',
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Note (optional, e.g. Rahul's PC)"
+            value={newNote}
+            onChange={e => setNewNote(e.target.value)}
+            style={{
+              flex: '1 1 160px', padding: '7px 12px', borderRadius: 7, fontSize: 13,
+              background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text)',
+              outline: 'none',
+            }}
+          />
+          <button
+            id="whitelist-add-btn"
+            onClick={handleAddUser}
+            disabled={addingUser}
+            style={{
+              padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 700,
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none',
+              color: '#fff', cursor: addingUser ? 'not-allowed' : 'pointer', opacity: addingUser ? 0.7 : 1,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <UserPlus size={13} />
+            {addingUser ? 'Adding...' : 'Add User'}
+          </button>
+          {addError && <div style={{ width: '100%', fontSize: 12, color: 'var(--crit)', fontWeight: 600 }}>⚠ {addError}</div>}
+        </div>
+
+        {/* Whitelist table */}
+        {allowedUsers.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>No users whitelisted yet.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-3)' }}>
+                {['Email', 'Note', 'Added By', 'Added At', 'Action'].map(h => (
+                  <th key={h} style={{ padding: '7px 14px', textAlign: 'left', color: 'var(--text-3)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {allowedUsers.map((u, i) => {
+                const isAdmin = u.email === 'info.honeyknows@gmail.com'
+                return (
+                  <tr key={u.email} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-1)', fontWeight: 600 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {isAdmin && <Lock size={11} color="var(--accent)" title="Super Admin" />}
+                        {u.email}
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-3)', fontSize: 12 }}>{u.note || '—'}</td>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-3)', fontSize: 12 }}>{u.added_by}</td>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-3)', fontSize: 12 }}>{fmtDate(u.added_at)}</td>
+                    <td style={{ padding: '8px 14px' }}>
+                      {isAdmin ? (
+                        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>PERMANENT</span>
+                      ) : (
+                        <button
+                          onClick={() => handleRemoveUser(u.email)}
+                          title="Remove from whitelist"
+                          style={actionBtn('#ef4444')}
+                        >
+                          <UserMinus size={12} /> Remove
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
     </div>
   )
 }
