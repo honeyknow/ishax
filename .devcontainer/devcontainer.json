@@ -13,7 +13,10 @@
   },
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
-    "TAILSCALE_AUTH_KEY": "${localEnv:TAILSCALE_AUTH_KEY}"
+    "GOOGLE_CLIENT_ID":     "${localEnv:GOOGLE_CLIENT_ID}",
+    "GOOGLE_CLIENT_SECRET": "${localEnv:GOOGLE_CLIENT_SECRET}",
+    "SESSION_SECRET":       "${localEnv:SESSION_SECRET}",
+    "TAILSCALE_AUTH_KEY":   "${localEnv:TAILSCALE_AUTH_KEY}"
   },
   "customizations": {
     "vscode": {
