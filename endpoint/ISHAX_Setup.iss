@@ -65,6 +65,9 @@ Source: "amsi_watcher.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "sysmon_config.xml";       DestDir: "{app}"; Flags: ignoreversion
 Source: "ossec.conf";              DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
 Source: "wazuh-agent-{#WazuhVersion}-1.msi"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
+; ISHAX Active Response scripts (Kill Switch)
+Source: "isolate.ps1";             DestDir: "{pf32}\ossec-agent\active-response\bin"; Flags: ignoreversion
+Source: "unisolate.ps1";           DestDir: "{pf32}\ossec-agent\active-response\bin"; Flags: ignoreversion
 
 [Run]
 ; ---- Step 0: Install Tailscale silently (connects PC to server VPN) ----

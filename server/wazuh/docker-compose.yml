@@ -38,7 +38,8 @@ services:
     volumes:
       - wazuh_api_configuration:/var/ossec/api/configuration
       - wazuh_etc:/var/ossec/etc
-      - wazuh_logs:/var/ossec/logs
+      # Bind-mount logs to host so ingestor.py can read archives.json directly
+      - /tmp/wazuh_logs:/var/ossec/logs
       - wazuh_queue:/var/ossec/queue
       - wazuh_var_multigroups:/var/ossec/var/multigroups
       - wazuh_integrations:/var/ossec/integrations
@@ -55,7 +56,7 @@ services:
 volumes:
   wazuh_api_configuration:
   wazuh_etc:
-  wazuh_logs:
+  # wazuh_logs is now a bind mount (/tmp/wazuh_logs) — not listed here
   wazuh_queue:
   wazuh_var_multigroups:
   wazuh_integrations:

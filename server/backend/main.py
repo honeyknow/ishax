@@ -52,7 +52,10 @@ app.add_middleware(
 # Deploy config
 # ---------------------------------------------------------------------------
 SERVER_HOST   = os.environ.get("SERVER_HOST", "agents.weknows.me")
-ISCC_PATH     = os.environ.get("ISCC_PATH", r"C:\Program Files (x86)\Inno Setup 6\iscc.exe")
+ISCC_PATH_WINDOWS = r"C:\Program Files (x86)\Inno Setup 6\iscc.exe"
+ISCC_PATH_LINUX = os.path.expanduser("~/.wine/drive_c/inno/ISCC.exe")
+DEFAULT_ISCC = ISCC_PATH_LINUX if os.name != "nt" else ISCC_PATH_WINDOWS
+ISCC_PATH     = os.environ.get("ISCC_PATH", DEFAULT_ISCC)
 ENDPOINT_SRC  = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "endpoint"))
 WAZUH_API_BASE = os.environ.get("WAZUH_API_BASE", "https://localhost:55000")
 WAZUH_API_USER = os.environ.get("WAZUH_API_USER", "wazuh")
@@ -74,14 +77,11 @@ def utc_from_epoch(epoch: Optional[int]) -> Optional[str]:
 
 def get_db():
     """Legacy single-tenant fallback — only used if TenantManager fails to init."""
-    # Point fallback at admin tenant DB if it exists, else legacy edr.db
-    from multi_tenant_manager import TENANT_DB_DIR
-    admin_db = os.path.join(TENANT_DB_DIR, "tenant_b1ba195b.db")
-    path = admin_db if os.path.exists(admin_db) else DB_PATH
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     ensure_db_migrations(conn)
     return conn
+
 
 
 # ---------------------------------------------------------------------------
@@ -1712,10 +1712,12 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
             mgr.register_agent(tenant_id=tenant_id, agent_id=agent_id, agent_name=agent_name)
         print(f"[Deploy] Agent pre-registered: {agent_id} → tenant {tenant_id}", flush=True)
     except Exception as e:
-        print(f"[Deploy] Wazuh pre-registration failed: {e} — generating installer without pre-reg.", flush=True)
-        # Fallback: generate installer with generic config (agent auto-registers on first connect)
-        agent_id = "000"
-        agent_key = ""
+        print(f"[Deploy] Wazuh pre-registration failed: {e}", flush=True)
+        raise HTTPException(
+            503,
+            f"Wazuh agent pre-registration failed: {e}. "
+            "Ensure Wazuh Manager is running (check: docker ps) and try again in 30s."
+        )
 
     # Build ossec.conf
     conf_content = _build_ossec_conf(agent_id, agent_key, SERVER_HOST)
@@ -1754,8 +1756,13 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
             )
 
         # Compile
+        cmd = [ISCC_PATH, os.path.join(tmp, "ISHAX_Setup.iss")]
+        if os.name != "nt":
+            # On Linux (Codespaces), run the Windows compiler via Wine headless
+            cmd = ["xvfb-run", "-a", "wine", ISCC_PATH, os.path.join(tmp, "ISHAX_Setup.iss")]
+            
         result = subprocess.run(
-            [ISCC_PATH, os.path.join(tmp, "ISHAX_Setup.iss")],
+            cmd,
             capture_output=True,
             timeout=180,
             cwd=tmp,
@@ -1929,6 +1936,7 @@ async def admin_purge_tenant(tenant_id: str, request: Request):
     return {"status": "purged", "tenant_id": tenant_id, "agents_revoked": len(agents)}
 
 
+
 @app.get("/admin/agents/{agent_id}/revoke")
 async def user_self_revoke_agent(agent_id: str, request: Request):
     """Users can revoke their OWN agents. Prevents cross-tenant abuse."""
@@ -1944,3 +1952,111 @@ async def user_self_revoke_agent(agent_id: str, request: Request):
     await _wazuh_delete_agent(agent_id)
     return {"status": "revoked", "agent_id": agent_id}
 
+
+# ---------------------------------------------------------------------------
+# Kill Switch — Network Isolation (Active Response)
+# ---------------------------------------------------------------------------
+
+async def _wazuh_active_response(agent_id: str, command: str):
+    """Send an Active Response command to a specific agent via Wazuh API."""
+    token = await _get_wazuh_token()
+    async with httpx.AsyncClient(verify=False, timeout=20) as client:
+        r = await client.put(
+            f"{WAZUH_API_BASE}/active-response",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"agents_list": agent_id},
+            json={
+                "command": command,
+                "arguments": [],
+                "alert": {
+                    "data": {"srcip": "admin-triggered"},
+                    "rule": {"description": "ISHAX Kill Switch"},
+                },
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+@app.post("/admin/agents/{agent_id}/isolate")
+async def admin_isolate_agent(agent_id: str, request: Request):
+    """
+    Isolate a PC: trigger isolate.ps1 via Wazuh Active Response.
+    Blocks all network traffic on the endpoint EXCEPT the Wazuh connection.
+    Admin only.
+    """
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    # Verify agent exists in master.db
+    row = mgr._master.execute(
+        "SELECT tenant_id, is_revoked FROM agents WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, f"Agent {agent_id} not found.")
+    if row["is_revoked"]:
+        raise HTTPException(400, "Agent is already revoked — cannot isolate a revoked agent.")
+    try:
+        result = await _wazuh_active_response(agent_id, "ishax-isolate")
+        # Mark isolated in master.db
+        mgr._master.execute(
+            "UPDATE agents SET is_isolated = 1 WHERE agent_id = ?", (agent_id,)
+        )
+        mgr._master.commit()
+        print(f"[KillSwitch] Agent {agent_id} ISOLATED by {user['email']}", flush=True)
+        return {"status": "isolated", "agent_id": agent_id, "wazuh_response": result}
+    except Exception as e:
+        raise HTTPException(500, f"Active Response failed: {e}. Is Wazuh running? Is agent online?")
+
+
+@app.post("/admin/agents/{agent_id}/unisolate")
+async def admin_unisolate_agent(agent_id: str, request: Request):
+    """
+    Restore network access: trigger unisolate.ps1 via Wazuh Active Response.
+    Admin only.
+    """
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    row = mgr._master.execute(
+        "SELECT tenant_id FROM agents WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, f"Agent {agent_id} not found.")
+    try:
+        result = await _wazuh_active_response(agent_id, "ishax-unisolate")
+        mgr._master.execute(
+            "UPDATE agents SET is_isolated = 0 WHERE agent_id = ?", (agent_id,)
+        )
+        mgr._master.commit()
+        print(f"[KillSwitch] Agent {agent_id} UNISOLATED by {user['email']}", flush=True)
+        return {"status": "unisolated", "agent_id": agent_id, "wazuh_response": result}
+    except Exception as e:
+        raise HTTPException(500, f"Active Response failed: {e}. Is Wazuh running? Is agent online?")
+
+
+@app.get("/admin/agents/{agent_id}/isolation-status")
+def admin_get_isolation_status(agent_id: str, request: Request):
+    """Get current isolation state of an agent. Admin only."""
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Admin access required.")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "TenantManager unavailable.")
+    row = mgr._master.execute(
+        "SELECT agent_id, is_isolated, is_revoked FROM agents WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, f"Agent {agent_id} not found.")
+    return {
+        "agent_id": agent_id,
+        "is_isolated": bool(row["is_isolated"]),
+        "is_revoked": bool(row["is_revoked"]),
+    }

@@ -37,21 +37,23 @@ CREATE TABLE IF NOT EXISTS agents (
     agent_name    TEXT,                        -- Human label: "Rahul-PC"
     registered_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     last_seen_at  INTEGER,
-    is_revoked    INTEGER NOT NULL DEFAULT 0   -- 1 = agent removed by user
+    is_revoked    INTEGER NOT NULL DEFAULT 0,  -- 1 = agent removed by user
+    is_isolated   INTEGER NOT NULL DEFAULT 0   -- 1 = network isolated via Kill Switch
 );
 
 CREATE INDEX IF NOT EXISTS idx_agents_tenant   ON agents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_agents_revoked  ON agents(is_revoked);
+CREATE INDEX IF NOT EXISTS idx_agents_isolated ON agents(is_isolated);
 
 -- ---------------------------------------------------------------------------
 -- allowed_users
--- Whitelist of emails permitted to login via Google OAuth.
+-- Whitelist of emails permitted to login (Email + Password auth).
 -- Admin email (info.honeyknows@gmail.com) is ALWAYS allowed regardless.
 -- Managed via Admin Panel UI — no code change or restart needed.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS allowed_users (
     email         TEXT PRIMARY KEY,                -- User email (lowercase)
-    password_hash TEXT,                            -- Password hash
+    password_hash TEXT,                            -- bcrypt hash
     added_by      TEXT NOT NULL DEFAULT 'admin',   -- Who granted access
     added_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     note          TEXT                             -- Optional label: "User 1 - Rahul"

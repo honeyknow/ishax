@@ -34,6 +34,7 @@ import uuid
 from pathlib import Path
 from threading import Lock
 import hashlib
+import bcrypt
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -393,7 +394,7 @@ class TenantManager:
         if not email or "@" not in email:
             raise ValueError(f"Invalid email: {email!r}")
             
-        password_hash = hashlib.sha256(password.encode()).hexdigest() if password else ""
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode() if password else ""
         
         with self._lock:
             existing = self._master.execute(
@@ -418,9 +419,10 @@ class TenantManager:
         
         if not row or not row["password_hash"]:
             return False
-            
-        computed_hash = hashlib.sha256(password.encode()).hexdigest()
-        return computed_hash == row["password_hash"]
+        try:
+            return bcrypt.checkpw(password.encode(), row["password_hash"].encode())
+        except Exception:
+            return False
 
     def remove_allowed_user(self, email: str) -> bool:
         """

@@ -121,19 +121,24 @@ Stop-ProcessTreeFromPidFile (Join-Path $FRONTEND_DIR "frontend.pid") "Frontend U
 Stop-OrphanProjectProcesses
 
 function Kill-Port($port) {
-    $conns = netstat -ano | findstr ":$port"
-    foreach ($conn in $conns) {
-        $parts = $conn.Trim() -split '\s+'
-        if ($parts[-1] -match '^\d+$') {
-            $pidToKill = $parts[-1]
-            if ($pidToKill -ne "0") {
-                taskkill.exe /PID $pidToKill /T /F > $null 2>&1
-            }
+    $pids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($p in $pids) {
+        if ($p -and $p -ne 0) {
+            Write-Host "  Killing PID $p on port $port..." -ForegroundColor DarkGray
+            try { Stop-Process -Id $p -Force -ErrorAction Stop } catch {}
+            Start-Sleep -Milliseconds 500
         }
     }
 }
 Kill-Port $BackendPort
 Kill-Port $FrontendPort
+
+# Clear stale log files so we always see fresh output
+Remove-Item (Join-Path $BACKEND_DIR "backend.log.err") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $BACKEND_DIR "backend.log") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $PIPELINE_DIR "ingestor.log") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $FRONTEND_DIR "frontend.log") -Force -ErrorAction SilentlyContinue
+Write-Ok "Required commands found."
 
 docker info > $null 2>&1
 if ($LASTEXITCODE -ne 0) {

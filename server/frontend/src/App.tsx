@@ -81,8 +81,12 @@ export default function App() {
     setView('admin')
   }
 
-  const handleSignOut = () => {
-    window.location.href = '/auth/logout'
+  const handleSignOut = async () => {
+    try {
+      await api.logout()
+    } finally {
+      window.location.href = '/login'
+    }
   }
 
   if (isCheckingAuth) {

@@ -3,7 +3,8 @@
   "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
-    "ghcr.io/tailscale/codespace/tailscale:1": {}
+    "ghcr.io/tailscale/codespace/tailscale:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "capAdd": ["CAP_NET_ADMIN", "CAP_MKNOD", "CAP_NET_RAW"],
   "forwardPorts": [5173, 8000],

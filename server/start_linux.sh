@@ -53,10 +53,20 @@ echo "      Tailscale IP: $TAILSCALE_IP"
 # ---- Step 2: Wazuh ----
 echo ""
 echo "[2/4] Starting Wazuh Manager (Docker)..."
+# Create bind-mount dir so Docker can write archives.json to host
+mkdir -p /tmp/wazuh_logs
 if command -v docker &>/dev/null && [ -f "$SCRIPT_DIR/wazuh/docker-compose.yml" ]; then
   cd "$SCRIPT_DIR/wazuh"
   docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null || echo "      ! Docker compose failed — is Docker running?"
-  echo "      ✓ Wazuh containers starting (takes ~30s to become ready)"
+  echo "      Waiting up to 60s for Wazuh to become ready..."
+  for i in $(seq 1 12); do
+    sleep 5
+    if docker exec single-node-wazuh.manager-1 pgrep -x wazuh-server >/dev/null 2>&1; then
+      echo "      ✓ Wazuh ready (took $((i*5))s)"
+      break
+    fi
+    echo "      ... still starting ($((i*5))s)"
+  done
 else
   echo "      ! Docker or wazuh/docker-compose.yml not found — skipping Wazuh"
 fi
@@ -67,9 +77,13 @@ echo "[3/4] Starting Ingestor Pipeline..."
 cd "$SCRIPT_DIR/pipeline"
 pkill -f "python3 ingestor.py" 2>/dev/null || true
 sleep 1
-MULTI_TENANT=1 nohup python3 ingestor.py > ingestor.log 2>&1 &
+# ARCHIVES_JSON points to the bind-mounted host path (set in docker-compose.yml)
+ARCHIVES_JSON=/tmp/wazuh_logs/archives/archives.json \
+  MULTI_TENANT=1 \
+  nohup python3 ingestor.py > ingestor.log 2>&1 &
 INGESTOR_PID=$!
 echo "      ✓ Ingestor started (PID=$INGESTOR_PID) → pipeline/ingestor.log"
+echo "      Watching: /tmp/wazuh_logs/archives/archives.json"
 
 # ---- Step 4: FastAPI backend ----
 echo ""
@@ -102,3 +116,13 @@ echo "    tail -f server/pipeline/ingestor.log"
 echo "    tail -f server/backend/backend.log"
 echo "    tail -f server/frontend/frontend.log"
 echo "=========================================="
+
+# ---- Keep-alive: prevent Codespace from sleeping during demo ----
+echo "[INFO] Starting keep-alive loop (pings /health every 20 min to prevent Codespace sleep)"
+(
+  while true; do
+    sleep 1200
+    curl -s http://localhost:8000/health > /dev/null 2>&1 || true
+  done
+) &
+echo "      ✓ Keep-alive running (PID=$!)"
