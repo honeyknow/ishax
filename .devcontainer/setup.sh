@@ -50,7 +50,7 @@ if [ -z "$SESSION_SECRET" ]; then
   SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 fi
 
-cat << 'EOF' > "$ENV_FILE"
+cat << EOF > "$ENV_FILE"
 # -----------------------------------------------------------------------------
 # ISHA-X SYSTEM ENVIRONMENT VARIABLES
 # -----------------------------------------------------------------------------
