@@ -1771,10 +1771,10 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
             )
 
         # Compile
-        cmd = [ISCC_PATH, os.path.join(tmp, "ISHAX_Setup.iss")]
+        cmd = [ISCC_PATH, "ISHAX_Setup.iss"]
         if os.name != "nt":
             # On Linux (Codespaces), run the Windows compiler via Wine headless
-            cmd = ["xvfb-run", "-a", "wine", ISCC_PATH, os.path.join(tmp, "ISHAX_Setup.iss")]
+            cmd = ["xvfb-run", "-a", "wine", ISCC_PATH, "ISHAX_Setup.iss"]
             
         result = subprocess.run(
             cmd,
