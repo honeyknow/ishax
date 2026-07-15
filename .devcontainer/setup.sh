@@ -23,13 +23,10 @@ echo "[4/5] Installing Wine and Inno Setup compiler for dynamic MSI generation..
 sudo dpkg --add-architecture i386
 sudo apt-get update -qq
 # Using DEBIAN_FRONTEND=noninteractive to avoid prompt hangs
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq wine wine32 wine64 xvfb wget
-echo "  → Downloading Inno Setup 6..."
-wget -q -O /tmp/innosetup.exe "https://jrsoftware.org/download.php/is.exe"
-echo "  → Installing Inno Setup 6 via Wine..."
-# Run installer headless using xvfb-run
-xvfb-run -a wine /tmp/innosetup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\inno" >/dev/null 2>&1 || true
-rm -f /tmp/innosetup.exe
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq wine wine32 wine64 xvfb unzip
+echo "  → Extracting Inno Setup 6 portable..."
+mkdir -p "$HOME/.wine/drive_c/inno"
+unzip -q -o "$WORKSPACE/endpoint/inno.zip" -d "$HOME/.wine/drive_c/inno"
 
 # Verify InnoSetup was installed correctly
 ISCC="$HOME/.wine/drive_c/inno/ISCC.exe"
