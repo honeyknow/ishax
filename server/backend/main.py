@@ -58,7 +58,7 @@ WAZUH_API_BASE = os.environ.get("WAZUH_API_BASE", "https://localhost:55000")
 WAZUH_API_USER = os.environ.get("WAZUH_API_USER", "wazuh")
 WAZUH_API_PASS = os.environ.get("WAZUH_API_PASS", "wazuh")
 
-# Rate-limit: one download per user per 60 seconds
+# Rate-limit: one download per user per 10 seconds (NSIS compiles in ~2-3s)
 _download_cooldown: dict = {}
 
 
@@ -1699,11 +1699,11 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
     if not tenant_id:
         raise HTTPException(503, "Tenant record not found. Please try logging out and back in.")
 
-    # Rate limit
+    # Rate limit (10s — fast enough with NSIS)
     now = time.time()
     last_dl = _download_cooldown.get(email, 0)
-    if now - last_dl < 60:
-        wait = int(60 - (now - last_dl))
+    if now - last_dl < 10:
+        wait = int(10 - (now - last_dl))
         raise HTTPException(429, f"Please wait {wait} more seconds before generating a new installer.")
     _download_cooldown[email] = now
 
