@@ -18,25 +18,10 @@ pip3 install -q -r "$WORKSPACE/server/pipeline/requirements.txt" 2>/dev/null || 
 echo "[3/4] Installing Node.js frontend dependencies..."
 cd "$WORKSPACE/server/frontend" && npm install --silent && cd "$WORKSPACE"
 
-# ---- Wine & Inno Setup ----
-echo "[4/5] Installing Wine and Inno Setup compiler for dynamic MSI generation..."
-sudo dpkg --add-architecture i386
-sudo apt-get update -qq
-# Using DEBIAN_FRONTEND=noninteractive to avoid prompt hangs
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq wine wine32 wine64 xvfb unzip
-echo "  → Extracting Inno Setup 6 portable..."
-mkdir -p "$HOME/.wine/drive_c/inno"
-unzip -q -o "$WORKSPACE/endpoint/inno.zip" -d "$HOME/.wine/drive_c/inno"
-
-# Verify InnoSetup was installed correctly
-ISCC="$HOME/.wine/drive_c/inno/ISCC.exe"
-if [ ! -f "$ISCC" ]; then
-  echo "  ⚠ InnoSetup ISCC.exe not found at $ISCC"
-  echo "  → The 'Download Agent' feature will not work."
-  echo "  → Re-run: xvfb-run -a wine /tmp/innosetup.exe /VERYSILENT /DIR='C:\\inno'"
-else
-  echo "  ✓ InnoSetup verified at $ISCC"
-fi
+# ---- NSIS Installer Compiler (Native Linux, No Wine Needed) ----
+echo "[4/5] Installing NSIS compiler..."
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq nsis
+echo "  ✓ NSIS (makensis) ready — $(makensis -VERSION)"
 
 # ---- Auto-build .env from Codespace Secrets ----
 echo "[5/5] Building .env from Codespace secrets..."

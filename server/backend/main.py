@@ -52,10 +52,7 @@ app.add_middleware(
 # Deploy config
 # ---------------------------------------------------------------------------
 SERVER_HOST   = os.environ.get("SERVER_HOST", "agents.weknows.me")
-ISCC_PATH_WINDOWS = r"C:\Program Files (x86)\Inno Setup 6\iscc.exe"
-ISCC_PATH_LINUX = os.path.expanduser("~/.wine/drive_c/inno/ISCC.exe")
-DEFAULT_ISCC = ISCC_PATH_LINUX if os.name != "nt" else ISCC_PATH_WINDOWS
-ISCC_PATH     = os.environ.get("ISCC_PATH", DEFAULT_ISCC)
+NSIS_PATH     = os.environ.get("NSIS_PATH", "makensis")  # native on Linux, no Wine needed
 ENDPOINT_SRC  = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "endpoint"))
 WAZUH_API_BASE = os.environ.get("WAZUH_API_BASE", "https://localhost:55000")
 WAZUH_API_USER = os.environ.get("WAZUH_API_USER", "wazuh")
@@ -1710,8 +1707,9 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(429, f"Please wait {wait} more seconds before generating a new installer.")
     _download_cooldown[email] = now
 
-    # Check iscc.exe is available
-    iscc_available = os.path.isfile(ISCC_PATH)
+    # Check makensis (NSIS) is available
+    import shutil as _shutil
+    iscc_available = _shutil.which(NSIS_PATH) is not None
 
     agent_name = f"ishax-{email.split('@')[0]}-{secrets.token_hex(3)}"
 
@@ -1743,7 +1741,7 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
             f"wazuh-agent-4.8.0-1.msi",
             "amsi_watcher.exe",
             "sysmon_config.xml",
-            "ISHAX_Setup.iss",
+            "ISHAX_Setup.nsi",
             "isolate.ps1",
             "unisolate.ps1",
         ]
@@ -1766,30 +1764,25 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
         if not iscc_available:
             raise HTTPException(
                 503,
-                "Installer compiler (iscc.exe) not found on server. "
-                "Admin needs to install Inno Setup 6 and set ISCC_PATH in .env"
+                "Installer compiler (makensis) not found on server. "
+                "Run: sudo apt-get install -y nsis"
             )
 
-        # Compile
-        cmd = [ISCC_PATH, "ISHAX_Setup.iss"]
-        if os.name != "nt":
-            # On Linux (Codespaces), run the Windows compiler via Wine headless
-            cmd = ["xvfb-run", "-a", "wine", ISCC_PATH, "ISHAX_Setup.iss"]
-            
+        # Compile with NSIS (native Linux, no Wine needed)
         result = subprocess.run(
-            cmd,
+            [NSIS_PATH, "ISHAX_Setup.nsi"],
             capture_output=True,
-            timeout=180,
+            timeout=120,
             cwd=tmp,
         )
         if result.returncode != 0:
-            err = result.stderr.decode(errors="replace")
-            print(f"[Deploy] iscc.exe failed:\n{err}", flush=True)
-            raise HTTPException(500, f"Installer compilation failed. Check server logs.")
+            err = result.stderr.decode(errors="replace") + result.stdout.decode(errors="replace")
+            print(f"[Deploy] makensis failed:\n{err}", flush=True)
+            raise HTTPException(500, "Installer compilation failed. Check server logs.")
 
-        output_exe = os.path.join(tmp, "Output", "ISHAX_Setup.exe")
+        output_exe = os.path.join(tmp, "ISHAX_Setup.exe")
         if not os.path.isfile(output_exe):
-            raise HTTPException(500, "Compiled .exe not found after iscc run.")
+            raise HTTPException(500, "Compiled .exe not found after makensis run.")
 
         # Move to a stable temp path (tmp folder gets cleaned after response)
         stable = os.path.join(tempfile.gettempdir(), f"ISHAX_Setup_{secrets.token_hex(6)}.exe")
