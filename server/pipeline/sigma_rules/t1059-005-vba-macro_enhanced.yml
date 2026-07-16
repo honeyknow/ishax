@@ -57,4 +57,4 @@ tags:
   - attack.execution
   - attack.t1059.005
 
-    - custom_edr_enhanced
+    - custom.edr_enhanced

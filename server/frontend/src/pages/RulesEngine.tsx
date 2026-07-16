@@ -205,7 +205,7 @@ export default function RulesEngine() {
                         <td>
                           <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }} title={rule.title}>
                             {rule.title}
-                            {rule.tags?.includes('custom_edr_enhanced') ? (
+                            {rule.tags?.includes('custom.edr_enhanced') ? (
                               <span style={{ fontSize: 9, background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>ENHANCED</span>
                             ) : (
                               <a href={`https://github.com/SigmaHQ/sigma/search?q=${rule.rule_id}`} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }} title="View Official Source on GitHub">
@@ -237,7 +237,7 @@ export default function RulesEngine() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                            {(rule.tags ?? []).filter(t => t !== 'custom_edr_enhanced').slice(0, 2).map(tag => (
+                            {(rule.tags ?? []).filter(t => t !== 'custom.edr_enhanced').slice(0, 2).map(tag => (
                               <span key={tag} className="tag" style={{ fontSize: 10 }}>
                                 {tag.replace('attack.', '')}
                               </span>

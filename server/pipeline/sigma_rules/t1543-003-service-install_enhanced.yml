@@ -60,4 +60,4 @@ tags:
   - attack.privilege_escalation
   - attack.t1543.003
 
-    - custom_edr_enhanced
+    - custom.edr_enhanced
