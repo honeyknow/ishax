@@ -1,7 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Shield, AlertTriangle, RefreshCw } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Shield, AlertTriangle, CheckCircle2, RotateCcw, Tag } from 'lucide-react'
 import { api, type Alert } from '../api/client'
-import Button from './Button'
 
 interface Props {
   selectedId: string | null
@@ -52,20 +51,35 @@ function alertMeta(alert: Alert): string {
 }
 
 export default function AlertQueue({ selectedId, onSelect }: Props) {
+  const [tab, setTab] = useState<'open' | 'investigated'>('open')
   const [alerts, setAlerts] = useState<Alert[]>([])
-  const [totalAlerts, setTotalAlerts] = useState<number>(0)
   const [loading, setLoading] = useState(true)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [limit, setLimit] = useState<number>(100)
-
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [actionId, setActionId] = useState<string | null>(null)
+  const [investigatedIds, setInvestigatedIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('ishax_investigated_alerts')
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  // Tagging State
+  const [tagsByAlert, setTagsByAlert] = useState<Record<string, string[]>>(() => {
+    try { return JSON.parse(localStorage.getItem('ishax_tags') || '{}') } catch { return {} }
+  })
+  const [taggingId, setTaggingId] = useState<string | null>(null)
+  const [tagInput, setTagInput] = useState('')
+  const tagInputRef = useRef<HTMLInputElement>(null)
+  const TAG_REC = ['#falsepositive', '#important', '#ignore']
 
   const load = useCallback(async () => {
     try {
+      // Fetch ALL alerts without status filter
       const data = await api.getAlerts({ limit })
       setAlerts(data.alerts)
-      setTotalAlerts(data.total)
-      setLastRefresh(new Date())
     } catch {
       // Backend may still be starting.
     } finally {
@@ -73,28 +87,97 @@ export default function AlertQueue({ selectedId, onSelect }: Props) {
     }
   }, [limit])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { setLoading(true); load() }, [load])
   useEffect(() => {
-    const t = setInterval(load, 2000)
+    const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [load])
 
+  const handleInvestigate = (e: React.MouseEvent, alert: Alert) => {
+    e.stopPropagation()
+    setInvestigatedIds(prev => {
+      const next = new Set(prev)
+      if (tab === 'open') {
+        next.add(alert.alert_id)
+      } else {
+        next.delete(alert.alert_id)
+      }
+      localStorage.setItem('ishax_investigated_alerts', JSON.stringify(Array.from(next)))
+      return next
+    })
+  }
+
+  const handleAddTag = (alertId: string, tag: string) => {
+    if (!tag.trim()) return
+    const cleanTag = tag.trim().replace(/\s+/g, '')
+    setTagsByAlert(prev => {
+      const next = { ...prev }
+      if (!next[alertId]) next[alertId] = []
+      if (!next[alertId].includes(cleanTag)) next[alertId] = [...next[alertId], cleanTag]
+      localStorage.setItem('ishax_tags', JSON.stringify(next))
+      return next
+    })
+    setTaggingId(null)
+    setTagInput('')
+  }
+
+  const handleRemoveTag = (alertId: string, tag: string) => {
+    setTagsByAlert(prev => {
+      const next = { ...prev }
+      if (next[alertId]) {
+        next[alertId] = next[alertId].filter(t => t !== tag)
+        if (next[alertId].length === 0) delete next[alertId]
+      }
+      localStorage.setItem('ishax_tags', JSON.stringify(next))
+      return next
+    })
+  }
+
+  // Filter alerts based on the selected tab
+  const visibleAlerts = alerts.filter(a => {
+    const isInvestigated = investigatedIds.has(a.alert_id)
+    return tab === 'open' ? !isInvestigated : isInvestigated
+  })
+  
+  // Update total based on the filtered list
+  const displayTotal = visibleAlerts.length
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)', overflow: 'hidden' }}>
-      <div style={{
-        padding: '12px 14px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 7,
-        flexShrink: 0,
-      }}>
-        <AlertTriangle size={14} color="var(--crit)" />
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Live Alerts</span>
-        <span style={{
-          background: totalAlerts > 0 ? 'var(--crit-bg)' : 'var(--bg-3)',
-          border: `1px solid ${totalAlerts > 0 ? 'rgba(204,0,0,0.2)' : 'var(--border)'}`,
-          color: totalAlerts > 0 ? 'var(--crit)' : 'var(--text-3)',
-          borderRadius: 99, padding: '1px 7px', fontSize: 11, fontWeight: 600,
-        }}>{totalAlerts}</span>
+      {/* ── Tabs Header ── */}
+      <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex' }}>
+          {(['open', 'investigated'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                flex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '10px 0',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+                cursor: 'pointer',
+                fontSize: 12, fontWeight: tab === t ? 700 : 500,
+                color: tab === t ? 'var(--text)' : 'var(--text-3)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {t === 'open'
+                ? <AlertTriangle size={13} color={tab === 'open' ? 'var(--crit)' : 'var(--text-3)'} />
+                : <CheckCircle2 size={13} color={tab === 'investigated' ? '#22C55E' : 'var(--text-3)'} />
+              }
+              {t === 'open' ? 'Live Alerts' : 'Investigated'}
+              <span style={{
+                background: t === 'open' && displayTotal > 0 ? 'var(--crit-bg)' : 'var(--bg-3)',
+                border: `1px solid ${t === 'open' && displayTotal > 0 ? 'rgba(204,0,0,0.2)' : 'var(--border)'}`,
+                color: t === 'open' && displayTotal > 0 ? 'var(--crit)' : 'var(--text-3)',
+                borderRadius: 99, padding: '0px 6px', fontSize: 10, fontWeight: 600,
+              }}>{tab === t ? displayTotal : ''}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
 
@@ -103,14 +186,14 @@ export default function AlertQueue({ selectedId, onSelect }: Props) {
           <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
             <div className="spinner" />
           </div>
-        ) : alerts.length === 0 ? (
+        ) : visibleAlerts.length === 0 ? (
           <div className="empty-state">
             <Shield size={36} />
             <h3>No alerts detected</h3>
-            <p>The system is monitoring real telemetry. Alerts will appear here when a rule fires.</p>
+            <p>{tab === 'open' ? 'The system is monitoring real telemetry. Alerts will appear here when a rule fires.' : 'No alerts have been marked as investigated.'}</p>
           </div>
         ) : (
-          alerts.map(alert => {
+          visibleAlerts.map(alert => {
             const sev = sevClass(alert.severity_score)
             const selected = alert.alert_id === selectedId
             const image = alertImage(alert)
@@ -175,6 +258,16 @@ export default function AlertQueue({ selectedId, onSelect }: Props) {
                           Suppressed
                         </span>
                       )}
+                      {(tagsByAlert[alert.alert_id] || []).map(tag => (
+                        <span key={tag} style={{ 
+                          fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, 
+                          background: 'rgba(139, 92, 246, 0.1)', color: '#a78bfa', 
+                          border: '1px solid rgba(139, 92, 246, 0.3)', display: 'inline-flex', alignItems: 'center', gap: 4
+                        }}>
+                          {tag}
+                          <span onClick={(e) => { e.stopPropagation(); handleRemoveTag(alert.alert_id, tag) }} style={{ cursor: 'pointer', opacity: 0.6 }}>&times;</span>
+                        </span>
+                      ))}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, gap: 8 }}>
                       <span style={{ fontSize: 10, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -183,6 +276,88 @@ export default function AlertQueue({ selectedId, onSelect }: Props) {
                       <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>
                         {relTime(alert.created_at)}
                       </span>
+                    </div>
+                    {/* Investigate / Reopen button & Tagging */}
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={(e) => handleInvestigate(e, alert)}
+                        disabled={actionId === alert.alert_id}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 9px',
+                          fontSize: 10, fontWeight: 700,
+                          borderRadius: 5, cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          opacity: actionId === alert.alert_id ? 0.5 : 1,
+                          background: tab === 'open' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.08)',
+                          border: tab === 'open' ? '1px solid rgba(34,197,94,0.35)' : '1px solid rgba(239,68,68,0.25)',
+                          color: tab === 'open' ? '#22C55E' : '#ef4444',
+                        }}
+                      >
+                        {tab === 'open'
+                          ? <><CheckCircle2 size={11} /> Mark Investigated</>
+                          : <><RotateCcw size={11} /> Reopen</>
+                        }
+                      </button>
+                      
+                      {taggingId === alert.alert_id ? (
+                        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+                          <input 
+                            ref={tagInputRef}
+                            value={tagInput}
+                            onChange={e => setTagInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleAddTag(alert.alert_id, tagInput)
+                              if (e.key === 'Escape') setTaggingId(null)
+                            }}
+                            onBlur={() => setTimeout(() => setTaggingId(null), 200)}
+                            placeholder="#tag"
+                            autoFocus
+                            style={{
+                              background: 'var(--bg-1)', color: 'var(--text)', border: '1px solid var(--border)',
+                              borderRadius: 4, padding: '2px 6px', fontSize: 10, width: 100, outline: 'none'
+                            }}
+                          />
+                          {tagInput && TAG_REC.filter(t => t.includes(tagInput.toLowerCase())).length > 0 && (
+                            <div style={{
+                              position: 'absolute', bottom: '100%', left: 0, marginBottom: 4,
+                              background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4,
+                              padding: 4, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120,
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                            }}>
+                              {TAG_REC.filter(t => t.includes(tagInput.toLowerCase())).map(t => (
+                                <div 
+                                  key={t} 
+                                  onMouseDown={(e) => { e.preventDefault(); handleAddTag(alert.alert_id, t) }}
+                                  style={{ padding: '4px 6px', fontSize: 10, cursor: 'pointer', borderRadius: 3, color: 'var(--text-2)' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  {t}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setTaggingId(alert.alert_id); setTagInput('#') }}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '3px 8px', fontSize: 10, fontWeight: 600,
+                            background: 'transparent', border: '1px dashed var(--border)',
+                            color: 'var(--text-3)', borderRadius: 5, cursor: 'pointer'
+                          }}
+                        >
+                          <Tag size={10} /> Add Tag
+                        </button>
+                      )}
+
+                      {tab === 'investigated' && (
+                        <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--text-3)' }}>
+                          Investigated
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

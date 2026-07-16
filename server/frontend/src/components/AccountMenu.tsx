@@ -68,7 +68,8 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
     }
   }
 
-  const displayName = email.split('@')[0]
+  const rawPrefix = email.split('@')[0].replace(/[._-]/g, ' ')
+  const displayName = rawPrefix.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
   const isAdmin = role === 'admin'
 
   return (
@@ -79,39 +80,32 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '5px 10px',
-          background: open ? 'var(--bg-4)' : 'var(--bg-3)',
-          border: '1px solid var(--border)',
-          borderRadius: 99,
+          gap: 10,
+          padding: '4px 8px',
+          background: 'transparent',
+          border: 'none',
           cursor: 'pointer',
           color: 'var(--text-1)',
-          transition: 'all 0.15s ease',
         }}
       >
         {/* Avatar circle */}
         <div style={{
-          width: 20, height: 20, borderRadius: '50%',
-          background: isAdmin ? 'var(--accent)' : 'var(--bg-5, #333)',
+          width: 32, height: 32, borderRadius: '50%',
+          background: isAdmin ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
-          {isAdmin
-            ? <Shield size={11} color="#fff" />
-            : <User size={11} color="var(--text-3)" />
-          }
+          {isAdmin ? <Shield size={16} color="#fff" /> : <User size={16} color="#ccc" />}
         </div>
-        <span style={{ fontSize: 12, fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName}
-        </span>
-        {isAdmin && (
-          <span style={{
-            fontSize: 9, fontWeight: 800, letterSpacing: '0.5px',
-            color: 'var(--accent)', background: 'rgba(99,102,241,0.12)',
-            padding: '1px 5px', borderRadius: 4,
-          }}>ADMIN</span>
-        )}
-        <ChevronDown size={12} color="var(--text-3)" style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+            {displayName}
+          </span>
+          <span style={{ fontSize: 10, color: isAdmin ? '#ef4444' : 'var(--text-3)', fontWeight: 600, letterSpacing: '0.5px' }}>
+            {isAdmin ? 'ADMIN' : 'USER'}
+          </span>
+        </div>
+        <ChevronDown size={14} color="var(--text-3)" style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', marginLeft: 4 }} />
       </button>
 
       {/* Dropdown */}
@@ -129,17 +123,27 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
           overflow: 'hidden',
         }}>
           {/* User info header */}
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-3)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Signed in as</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', wordBreak: 'break-all' }}>{email}</div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.5px',
-              color: isAdmin ? 'var(--accent)' : 'var(--text-3)',
-              background: isAdmin ? 'rgba(99,102,241,0.12)' : 'var(--bg-4)',
-              padding: '2px 7px', borderRadius: 4,
-            }}>
-              {isAdmin ? <><Shield size={9} /> ADMIN</> : <><User size={9} /> USER</>}
+          <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)', borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAdmin ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-4)', border: isAdmin ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Shield size={16} color={isAdmin ? '#ef4444' : 'var(--text-3)'} />
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{displayName}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{email}</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.5px',
+                color: isAdmin ? '#ef4444' : 'var(--text-3)',
+                background: isAdmin ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-4)',
+                border: isAdmin ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
+                padding: '3px 8px', borderRadius: 6,
+              }}>
+                {isAdmin ? <><Shield size={10} /> ADMIN</> : <><User size={10} /> USER</>}
+              </div>
             </div>
           </div>
 
@@ -150,7 +154,7 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
               icon={<Download size={14} />}
               label={downloading ? 'Preparing download...' : 'Download My DB'}
               sublabel="Export raw SQLite database"
-              color="var(--text-1)"
+              color="var(--text-2)"
               onClick={handleDownloadDb}
               disabled={downloading}
             />

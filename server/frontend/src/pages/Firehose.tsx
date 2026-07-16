@@ -46,6 +46,7 @@ export default function Firehose() {
   const [loading, setLoading]       = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [viewMode, setViewMode]     = useState<'table' | 'raw'>('table')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const formatRawJson = (jsonStr: string) => {
     try { return JSON.stringify(JSON.parse(jsonStr), null, 2) }
@@ -124,66 +125,102 @@ export default function Firehose() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-2)', overflow: 'hidden' }}>
-      {/* Unified Toolbar */}
+    <div style={{
+      flex: 1, display: 'flex', overflow: 'hidden',
+      background: 'var(--bg-2)', padding: '16px', gap: sidebarOpen ? '16px' : '0px',
+      transition: 'gap 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+    }}>
+      {/* Left Sidebar Filter Panel */}
       <div style={{
-        display: 'flex', flexDirection: 'column', gap: 12,
-        padding: '12px 20px',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-2)',
-        flexShrink: 0,
+        width: sidebarOpen ? 220 : 0, opacity: sidebarOpen ? 1 : 0, flexShrink: 0, display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)', borderRadius: '12px', border: sidebarOpen ? '1px solid var(--border)' : '0px solid var(--border)',
+        overflowY: 'auto', overflowX: 'hidden', padding: sidebarOpen ? '20px' : 0, boxShadow: sidebarOpen ? 'var(--shadow)' : 'none',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
-        {/* Top Row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          {/* Left: Basic Filters */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Filter size={13} color="var(--text-3)" />
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)' }}>Filters</span>
-            </div>
-            <select
-              value={selectedHost}
-              onChange={e => setHost(e.target.value)}
-              style={{ padding: '5px 10px', fontSize: 12, minWidth: 140 }}
-            >
-              <option value="all">All Hosts</option>
-              {hosts.map(h => <option key={h.host_id} value={h.host_id}>{h.pc_name || h.host_id}</option>)}
-            </select>
-            <select
-              value={hours}
-              onChange={e => setHours(Number(e.target.value))}
-              style={{ padding: '5px 10px', fontSize: 12 }}
-            >
-              {HOURS_OPTIONS.map(h => <option key={h} value={h}>Last {h}h</option>)}
-            </select>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <Filter size={16} color="var(--text-3)" />
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)' }}>Stream Filters</span>
+        </div>
+        
+        {/* Source & Time */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Time & Target</div>
+          <select
+            value={selectedHost}
+            onChange={e => setHost(e.target.value)}
+            style={{ padding: '8px 12px', fontSize: 13, width: '100%', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', marginBottom: 8, outline: 'none' }}
+          >
+            <option value="all">All Hosts</option>
+            {hosts.map(h => <option key={h.host_id} value={h.host_id}>{h.pc_name || h.host_id}</option>)}
+          </select>
+          <select
+            value={hours}
+            onChange={e => setHours(Number(e.target.value))}
+            style={{ padding: '8px 12px', fontSize: 13, width: '100%', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', outline: 'none' }}
+          >
+            {HOURS_OPTIONS.map(h => <option key={h} value={h}>Last {h}h</option>)}
+          </select>
+        </div>
 
-          {/* Center: Search */}
-          <div style={{ flex: 1, maxWidth: 600, padding: '0 20px' }}>
+        {/* Event Types */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Event Types</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {ALL_EVENT_TYPES.map(t => {
+              const active = selectedTypes.has(t)
+              const color = EVENT_COLORS[t]
+              return (
+                <label key={t} style={{ display: 'flex', alignItems: 'center', padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: active ? 'var(--bg-3)' : 'transparent', transition: 'background 0.15s' }}>
+                  <input type="checkbox" checked={active} onChange={() => toggleType(t)} style={{ display: 'none' }} />
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', border: `2px solid ${color}`, background: active ? color : 'transparent', marginRight: 10, transition: 'all 0.15s' }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: active ? 'var(--text-1)' : 'var(--text-3)', textTransform: 'capitalize', transition: 'color 0.15s' }}>{t}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div style={{
+        flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow)',
+      }}>
+        {/* Top Minimal Search Bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', flexShrink: 0
+        }}>
+          {/* Search */}
+          <div style={{ flex: 1, maxWidth: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              variant="ghost"
+              onClick={() => setSidebarOpen(o => !o)}
+              title="Toggle Sidebar"
+              icon={<Filter size={14} />}
+              style={{ padding: '8px', borderRadius: 8, background: 'var(--bg-2)' }}
+            />
             <input
               placeholder="Search events..."
               value={searchText}
               onChange={e => setSearch(e.target.value)}
-              style={{ padding: '6px 12px', fontSize: 12, width: '100%', borderRadius: 6, border: '1px solid var(--border-2)', background: 'var(--bg)' }}
+              style={{ padding: '8px 14px', fontSize: 13, width: '100%', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', outline: 'none' }}
             />
           </div>
 
-          {/* Right: Tools */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Right Tools (Logic is completely unchanged) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginLeft: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ display: 'flex', background: 'var(--bg)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <Button 
-                  variant="ghost" onClick={() => setViewMode('table')} title="Table View" aria-label="Table View" active={viewMode === 'table'} icon={<AlignJustify size={14} />} style={{ padding: '6px 10px', borderRadius: 0, background: viewMode === 'table' ? 'var(--bg-3)' : 'transparent' }}
-                />
-                <Button 
-                  variant="ghost" onClick={() => setViewMode('raw')} title="Raw JSON View" aria-label="Raw JSON View" active={viewMode === 'raw'} icon={<Code size={14} />} style={{ padding: '6px 10px', borderRadius: 0, background: viewMode === 'raw' ? 'var(--bg-3)' : 'transparent' }}
-                />
+              <div style={{ display: 'flex', background: 'var(--bg-2)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <Button variant="ghost" onClick={() => setViewMode('table')} title="Table View" aria-label="Table View" active={viewMode === 'table'} icon={<AlignJustify size={14} />} style={{ padding: '6px 10px', borderRadius: 0, background: viewMode === 'table' ? 'var(--bg-3)' : 'transparent' }} />
+                <Button variant="ghost" onClick={() => setViewMode('raw')} title="Raw JSON View" aria-label="Raw JSON View" active={viewMode === 'raw'} icon={<Code size={14} />} style={{ padding: '6px 10px', borderRadius: 0, background: viewMode === 'raw' ? 'var(--bg-3)' : 'transparent' }} />
               </div>
-              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>
                 {filtered.length.toLocaleString()} events
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <Button variant="ghost" size="sm" onClick={() => setPaused(p => !p)} icon={paused ? <Play size={12} /> : <Pause size={12} />}>
                 {paused ? 'Resume' : 'Pause'}
               </Button>
@@ -197,33 +234,17 @@ export default function Firehose() {
           </div>
         </div>
 
-        {/* Bottom Row: Event Type Toggles */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ALL_EVENT_TYPES.map(t => (
-            <Button
-              key={t} variant="custom" size="sm" active={selectedTypes.has(t)} customColor={EVENT_COLORS[t]} onClick={() => toggleType(t)}
-              style={{
-                padding: '4px 12px', borderRadius: 99, fontSize: 11, textTransform: 'uppercase', fontWeight: 600,
-                opacity: selectedTypes.has(t) ? 1 : 0.4, transition: 'all 0.15s ease'
-              }}
-            >
-              {t}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* Terminal stream */}
-      <div
-        ref={containerRef}
-        className="scroll-y mono"
-        style={{
-          flex: 1,
-          padding: '12px 20px',
-          background: 'var(--bg-3)',
-          overflowY: 'auto',
-        }}
-      >
+        {/* Terminal stream */}
+        <div
+          ref={containerRef}
+          className="scroll-y mono"
+          style={{
+            flex: 1,
+            padding: '16px 24px',
+            background: 'var(--bg)',
+            overflowY: 'auto',
+          }}
+        >
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
             <div className="spinner" />
@@ -362,6 +383,6 @@ export default function Firehose() {
         <span>Last {hours}h</span>
       </div>
     </div>
-  )
+  </div>
+)
 }
-

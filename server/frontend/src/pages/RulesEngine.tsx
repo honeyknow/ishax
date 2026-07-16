@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Settings, Search, Shield, ChevronUp, ChevronDown } from 'lucide-react'
+import { Settings, Search, Shield, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react'
 import { api, type SigmaRule } from '../api/client'
 import Button from '../components/Button'
 
@@ -93,8 +93,15 @@ export default function RulesEngine() {
     })
 
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{
+      flex: 1, display: 'flex', overflow: 'hidden',
+      background: 'var(--bg-2)', padding: '16px'
+    }}>
+      <div style={{
+        flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow)',
+      }}>
         <div style={{
           padding: '14px 20px',
           borderBottom: '1px solid var(--border)',
@@ -119,11 +126,6 @@ export default function RulesEngine() {
               {disabledCount} disabled
             </span>
           )}
-
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-3)' }}>
-            <Shield size={12} />
-            Live Toggling Enabled
-          </span>
 
           <div style={{ flex: 1 }} />
 
@@ -201,7 +203,16 @@ export default function RulesEngine() {
                           <Toggle enabled={isEnabled} onChange={(val) => handleToggle(rule.rule_id, val)} />
                         </td>
                         <td>
-                          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={rule.title}>{rule.title}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }} title={rule.title}>
+                            {rule.title}
+                            {rule.tags?.includes('custom_edr_enhanced') ? (
+                              <span style={{ fontSize: 9, background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>ENHANCED</span>
+                            ) : (
+                              <a href={`https://github.com/SigmaHQ/sigma/search?q=${rule.rule_id}`} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }} title="View Official Source on GitHub">
+                                <ExternalLink size={12} />
+                              </a>
+                            )}
+                          </div>
                           <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, fontFamily: "'Courier New', monospace" }}>
                             {rule.rule_id}
                           </div>
@@ -226,7 +237,7 @@ export default function RulesEngine() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                            {(rule.tags ?? []).slice(0, 2).map(tag => (
+                            {(rule.tags ?? []).filter(t => t !== 'custom_edr_enhanced').slice(0, 2).map(tag => (
                               <span key={tag} className="tag" style={{ fontSize: 10 }}>
                                 {tag.replace('attack.', '')}
                               </span>

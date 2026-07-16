@@ -145,22 +145,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield size={20} color="var(--accent)" />
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-1)' }}>Master Admin Panel</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>God's Eye View — all tenants, all data</div>
-          </div>
-        </div>
-        <button
-          onClick={load}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', color: 'var(--text-2)', fontSize: 13 }}
-        >
-          <RefreshCw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          Refresh
-        </button>
-      </div>
+
 
       {error && (
         <div style={{ padding: '10px 14px', background: 'var(--crit-bg)', border: '1px solid rgba(204,0,0,0.2)', borderRadius: 8, color: 'var(--crit)', fontSize: 13 }}>
@@ -170,9 +155,9 @@ export default function AdminPanel({ onImpersonate }: Props) {
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-        <StatCard icon={<Users size={16} color="var(--accent)" />} label="Active Tenants" value={String(activeTenants)} sub={`${tenants.length} total`} />
-        <StatCard icon={<Activity size={16} color="#22c55e" />} label="Total Agents" value={String(totalAgents)} sub="non-revoked" />
-        <StatCard icon={<Database size={16} color="var(--high)" />} label="Total DB Size" value={fmtBytes(totalDbSize)} sub="all tenants combined" />
+        <StatCard icon={<Users size={16} color="var(--accent)" />} label="Active Tenants" value={String(activeTenants)} />
+        <StatCard icon={<Activity size={16} color="#22c55e" />} label="Total Agents" value={String(totalAgents)} />
+        <StatCard icon={<Database size={16} color="var(--high)" />} label="Total DB Size" value={fmtBytes(totalDbSize)} />
       </div>
 
       {/* Server Hardware Stats */}
@@ -192,11 +177,6 @@ export default function AdminPanel({ onImpersonate }: Props) {
             Hardware stats not available. The <code style={{ color: 'var(--accent)' }}>psutil</code> module must be installed on the server and the <code style={{ color: 'var(--accent)' }}>/health</code> endpoint must include <code>system_stats</code>.
           </div>
         )}
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <SpecBadge label="Max Tenants" value="~10–20" />
-          <SpecBadge label="Min RAM Required" value="2 GB" />
-          <SpecBadge label="Retention Policy" value="1–14 days" />
-        </div>
       </div>
 
       {/* Tenants Table */}
@@ -396,7 +376,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
+function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
     <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -404,7 +384,7 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
         <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</span>
       </div>
       <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-1)', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{sub}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }

@@ -341,15 +341,16 @@ td { padding: 10px 14px; font-size: 13px; color: var(--text-2); }
 .topbar {
   display: flex;
   align-items: center;
-  min-height: var(--topbar-h);
-  padding: 8px 16px;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  height: 52px;
+  margin: 16px;
+  padding: 0 16px;
+  background: #18191c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   position: sticky;
-  top: 0;
+  top: 16px;
   z-index: 100;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
 
 /* ── Layout shell ── */
