@@ -1905,6 +1905,17 @@ async def download_agent(request: Request, background_tasks: BackgroundTasks):
         print(f"[Deploy] Agent pre-registered: {agent_id} → tenant {tenant_id}", flush=True)
     except Exception as e:
         print(f"[Deploy] Wazuh pre-registration failed: {e}", flush=True)
+        # FALLBACK FOR CODESPACES / LOCAL DEV:
+        # If Wazuh docker is not running, return the pre-compiled generic agent 
+        # so the UI doesn't crash and the user still gets a valid installer.
+        fallback_exe = os.path.join(ENDPOINT_SRC, "Output", "ISHAX_Setup.exe")
+        if os.path.isfile(fallback_exe):
+            print("[Deploy] Serving generic fallback installer...", flush=True)
+            return FileResponse(
+                fallback_exe,
+                filename=f"ISHAX_Setup_{email.split('@')[0]}.exe",
+                media_type="application/octet-stream",
+            )
         raise HTTPException(
             503,
             f"Wazuh agent pre-registration failed: {e}. "
