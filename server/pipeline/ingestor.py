@@ -44,13 +44,55 @@ if env_path.exists():
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-ARCHIVES_JSON  = os.getenv("ARCHIVES_JSON",
-                           "/var/ossec/logs/archives/archives.json")
-EDR_DB_PATH    = os.getenv("EDR_DB_PATH", str(Path(__file__).parent / "edr.db"))
-SCHEMA_PATH    = str(Path(__file__).parent / "schema.sql")
-POLL_INTERVAL  = float(os.getenv("POLL_INTERVAL", "0.5"))
-SOURCE_TYPE    = os.getenv("EDR_SOURCE_TYPE", "").strip().lower()
-RETENTION_DAYS = int(os.getenv("EDR_RETENTION_DAYS", "14"))
+
+def _resolve_archives_path() -> str:
+    """
+    R-2: Robust archives.json path resolution.
+    Priority:
+      1. ARCHIVES_JSON env var (always wins — explicit beats auto-detect)
+      2. 'docker' sentinel → tail via docker exec (no direct file access needed)
+      3. Auto-detect from known paths (Docker bind-mount, Linux native, Windows host)
+    Returns 'stdin' if none found (caller can pipe events in for testing).
+    """
+    explicit = os.getenv("ARCHIVES_JSON", "").strip()
+    if explicit:
+        return explicit  # Env var wins — works for all platforms
+
+    # Ordered candidate paths to try (most common first)
+    candidates = [
+        # Docker bind-mount (server/wazuh/docker-compose.yml: /tmp/wazuh_logs)
+        "/tmp/wazuh_logs/archives/archives.json",
+        # Native Linux Wazuh install
+        "/var/ossec/logs/archives/archives.json",
+        # Windows host: common Docker Desktop bind-mount targets
+        r"C:\tmp\wazuh_logs\archives\archives.json",
+        r"C:\wazuh_logs\archives\archives.json",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            print(f"[INFO] Auto-detected archives.json at: {path}", flush=True)
+            return path
+
+    # If running in Docker, use docker exec tail mode
+    if Path("/.dockerenv").exists():
+        print("[INFO] Running inside Docker — using docker tail mode", flush=True)
+        return "docker"
+
+    # No path found — warn loudly but don't crash; caller handles FileNotFoundError gracefully
+    print(
+        "[WARN] archives.json not found at any candidate path. "
+        "Set ARCHIVES_JSON env var explicitly. Defaulting to Linux path.",
+        flush=True,
+    )
+    return "/var/ossec/logs/archives/archives.json"
+
+
+ARCHIVES_JSON   = _resolve_archives_path()
+EDR_DB_PATH     = os.getenv("EDR_DB_PATH", str(Path(__file__).parent / "edr.db"))
+SCHEMA_PATH     = str(Path(__file__).parent / "schema.sql")
+POLL_INTERVAL   = float(os.getenv("POLL_INTERVAL", "0.5"))
+SOURCE_TYPE     = os.getenv("EDR_SOURCE_TYPE", "").strip().lower()
+RETENTION_DAYS  = int(os.getenv("EDR_RETENTION_DAYS", "14"))
 WRITE_QUEUE_MAX = int(os.getenv("EDR_WRITE_QUEUE_MAX", "10000"))
 
 # Multi-tenant mode: set MULTI_TENANT=1 in environment to enable SaaS routing.
@@ -313,6 +355,16 @@ def normalise(raw: dict) -> dict | None:
         "source_ip": ci_get(edata, "SourceIp", "sourceIp"),
         "username": ci_get(edata, "User", "user", "SubjectUserName", "TargetUserName"),
 
+        # FIX C-2: Sysmon EID 10 ProcessAccess — CallTrace field (stack trace)
+        # Used by proc_access_win_lsass_dump_comsvcs_dll.yml (LSASS dump detection)
+        # Sysmon stores this as eventdata.CallTrace e.g. "C:\Windows\SYSTEM32\ntdll.dll+...|comsvcs.dll+..."
+        "call_trace": ci_get(edata, "CallTrace", "callTrace"),
+
+        # FIX C-1: Provider_Name from Windows event System section
+        # Used by win_system_service_install_susp.yml (EID 7045, Provider_Name='Service Control Manager')
+        # NOTE: provider_name comes from sys_ (System element), not edata (EventData)
+        "provider_name": ci_get(sys_, "providerName", "provider", "ProviderName"),
+
         # AMSI specific fields
         "amsi_scan_result":amsi_scan_result,
         "amsi_content_name":amsi_content_name,
@@ -381,6 +433,8 @@ class DB:
             "process_path": "TEXT",
             "source_ip": "TEXT",
             "username": "TEXT",
+            "call_trace": "TEXT",           # FIX C-2: Sysmon EID 10 CallTrace for LSASS rule
+            "provider_name": "TEXT",        # FIX C-1: Windows Provider_Name for service install rule
             "raw_json_original": "TEXT",
             "raw_json_normalized": "TEXT",
         }
@@ -451,6 +505,23 @@ class DB:
         }
         if "host_id" not in existing_edge_cols:
             self.con.execute("ALTER TABLE process_edges ADD COLUMN host_id TEXT")
+
+        # ---- M-3: active_detections table (SQLite-backed upgrade tracker) ----
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS active_detections (
+                technique       TEXT    NOT NULL,
+                process_guid    TEXT    NOT NULL DEFAULT '',
+                endpoint_id     TEXT    NOT NULL DEFAULT '',
+                alert_id        INTEGER REFERENCES alerts(id) ON DELETE CASCADE,
+                ts              INTEGER NOT NULL,
+                confidence      TEXT    NOT NULL,
+                expires_at      INTEGER NOT NULL,
+                PRIMARY KEY (technique, process_guid, endpoint_id)
+            )
+        """)
+        self.con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ad_expires ON active_detections(expires_at)"
+        )
 
     def get_offset(self) -> int:
         cur = self.con.execute(
@@ -822,7 +893,7 @@ def process_line(db: DB, line: str, new_offset: int, run_rules) -> bool:
                             existing_id,
                         ),
                     )
-                    db.con.commit()
+                    target_db.con.commit()  # FIX H-5: was db.con.commit() — wrong DB in multi-tenant mode
                     print(
                         f"[ALERT-UPGRADE] id={existing_id} → "
                         f"{a.get('mitre_technique')} | HIGH | AMSI corroboration added",
@@ -830,13 +901,21 @@ def process_line(db: DB, line: str, new_offset: int, run_rules) -> bool:
                     )
                 except Exception as upd_exc:
                     print(f"[ERROR] alert upgrade id={existing_id}: {upd_exc}", flush=True)
+                else:
+                    # M-4: Re-enqueue threat intel on upgrade — new evidence (AMSI patterns)
+                    # may include hashes/IPs not present in the original cmdline event
+                    try:
+                        target_db.enqueue_threat_intel(existing_id)
+                    except Exception as ti_exc:
+                        print(f"[WARN] threat intel re-enqueue failed for upgraded alert {existing_id}: {ti_exc}", flush=True)
             else:
                 # New alert — INSERT
                 alert_id = target_db.insert_alert(a)
                 target_db.link_alert_context(alert_id, rowid)
                 target_db.enqueue_threat_intel(alert_id)
-                # Register id so detector can do upgrades if AMSI arrives later
+                # M-3: Pass con so register persists to active_detections DB table
                 register_alert_id(
+                    target_db.con,
                     a.get("mitre_technique", ""),
                     a.get("source_process_guid") or "",
                     a.get("source_agent_name") or "",

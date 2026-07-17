@@ -24,12 +24,31 @@
     </CreateRemoteThread>
 
     <!-- EID 10: ProcessAccess (cross-process memory ops) -->
+    <!-- H-4 FIX: Added ALL known LSASS dump access masks.
+         Any GrantedAccess that includes PROCESS_VM_READ (0x10) can dump LSASS.
+         Each mask below corresponds to a known tool or technique:
+           0x1010 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ (MiniDumpWriteDump minimum)
+           0x1038 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_OPERATION (ProcDump)
+           0x1400 = PROCESS_QUERY_INFORMATION | PROCESS_DUP_HANDLE (pypykatz)
+           0x1410 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE
+           0x143a = combo used by some Mimikatz variants
+           0x1fffff = PROCESS_ALL_ACCESS (most aggressive, used by many open-source tools)
+           0x40    = PROCESS_DUP_HANDLE only (rare but seen in some loaders)
+           0x1000  = PROCESS_QUERY_LIMITED_INFORMATION only (recon before dump)
+           0x2810  = custom combo seen in some Cobalt Strike BOFs
+           0x0810  = PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION (alternative)
+    -->
     <ProcessAccess onmatch="include">
       <GrantedAccess condition="is">0x1010</GrantedAccess>
       <GrantedAccess condition="is">0x1038</GrantedAccess>
+      <GrantedAccess condition="is">0x1400</GrantedAccess>
       <GrantedAccess condition="is">0x1410</GrantedAccess>
       <GrantedAccess condition="is">0x143a</GrantedAccess>
       <GrantedAccess condition="is">0x1fffff</GrantedAccess>
+      <GrantedAccess condition="is">0x40</GrantedAccess>
+      <GrantedAccess condition="is">0x1000</GrantedAccess>
+      <GrantedAccess condition="is">0x2810</GrantedAccess>
+      <GrantedAccess condition="is">0x0810</GrantedAccess>
     </ProcessAccess>
 
     <!--

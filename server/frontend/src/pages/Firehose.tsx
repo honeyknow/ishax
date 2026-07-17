@@ -127,13 +127,13 @@ export default function Firehose() {
   return (
     <div style={{
       flex: 1, display: 'flex', overflow: 'hidden',
-      background: 'var(--bg-2)', padding: '16px', gap: sidebarOpen ? '16px' : '0px',
+      padding: '16px', gap: sidebarOpen ? '16px' : '0px',
       transition: 'gap 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
       {/* Left Sidebar Filter Panel */}
       <div style={{
         width: sidebarOpen ? 220 : 0, opacity: sidebarOpen ? 1 : 0, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        background: 'var(--bg)', borderRadius: '12px', border: sidebarOpen ? '1px solid var(--border)' : '0px solid var(--border)',
+        background: 'var(--bg-2)', borderRadius: '12px', border: sidebarOpen ? '1px solid var(--border)' : '0px solid var(--border)',
         overflowY: 'auto', overflowX: 'hidden', padding: sidebarOpen ? '20px' : 0, boxShadow: sidebarOpen ? 'var(--shadow)' : 'none',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
@@ -184,13 +184,13 @@ export default function Firehose() {
       {/* Main Content Area */}
       <div style={{
         flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-        background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow)',
+        background: 'var(--bg-2)', borderRadius: '12px', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow)', position: 'relative'
       }}>
         {/* Top Minimal Search Bar */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', flexShrink: 0
+          padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)', flexShrink: 0
         }}>
           {/* Search */}
           <div style={{ flex: 1, maxWidth: 600, display: 'flex', alignItems: 'center', gap: 12 }}>

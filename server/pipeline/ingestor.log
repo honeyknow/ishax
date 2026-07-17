@@ -1,0 +1,7 @@
+[INFO] MULTI_TENANT=1 — SaaS routing mode active.
+[TenantManager] master.db opened at C:\cursor\weknows\latestedr\server\pipeline\master.db
+[TenantManager] Agent cache primed: 0 entries
+[DB] SQLite opened: C:\cursor\weknows\latestedr\server\pipeline\edr.db
+[INFO] Starting ingestor. archives_offset=0
+[INFO] Watching: docker
+[INFO] Tailing archives.json via docker exec...

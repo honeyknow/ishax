@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS events (
     process_path    TEXT,
     source_ip       TEXT,
     username        TEXT,
-
+    call_trace      TEXT,     -- Sysmon EID 10: CallTrace (stack trace for process access, e.g. comsvcs.dll)
     -- AMSI fields (populated for ISHAX-AMSI channel events)
     amsi_scan_result    INTEGER,  -- 0=clean, 1=not_detected, 32768=detected
     amsi_content_name   TEXT,     -- ContentName from AMSI ETW (e.g. "PowerShell_C:\...")
@@ -261,3 +261,23 @@ CREATE TABLE IF NOT EXISTS rules (
     enabled         INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_rules_enabled ON rules(enabled);
+
+-- ---------------------------------------------------------------------------
+-- active_detections  (M-3 Fix: SQLite-backed upgrade tracker)
+-- ---------------------------------------------------------------------------
+-- Replaces in-memory _active_detections dict. Persists across restarts.
+-- Allows MEDIUM→HIGH upgrade even if ingestor restarted between cmdline
+-- detection and AMSI corroboration arriving (within the 30s merge window).
+-- expires_at = ts + _ACTIVE_TTL (120s) — auto-excluded by queries after TTL.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS active_detections (
+    technique       TEXT    NOT NULL,
+    process_guid    TEXT    NOT NULL DEFAULT '',
+    endpoint_id     TEXT    NOT NULL DEFAULT '',
+    alert_id        INTEGER REFERENCES alerts(id) ON DELETE CASCADE,
+    ts              INTEGER NOT NULL,
+    confidence      TEXT    NOT NULL CHECK(confidence IN ('HIGH','MEDIUM')),
+    expires_at      INTEGER NOT NULL,  -- strftime('%s','now') + TTL
+    PRIMARY KEY (technique, process_guid, endpoint_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ad_expires ON active_detections(expires_at);

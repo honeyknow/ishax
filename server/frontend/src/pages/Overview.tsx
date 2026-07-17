@@ -157,11 +157,10 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 24, background: 'var(--bg-2)' }}>
-      <div style={{ maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="card" style={{
           padding: 18,
-          background: 'linear-gradient(180deg, rgba(16,16,18,0.98) 0%, rgba(12,12,14,0.98) 100%)',
         }}>
 
             <div style={{ padding: '8px 14px' }}>
@@ -292,7 +291,6 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
             <div style={{
               padding: '14px 18px',
               borderBottom: '1px solid var(--border)',
-              background: 'var(--bg)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -341,33 +339,6 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
                 <Monitor size={38} />
                 <h3>{search ? 'No hosts match your search' : 'No endpoint telemetry observed'}</h3>
                 <p style={{ marginBottom: 16 }}>Hosts appear only after real Wazuh/Sysmon events are ingested.</p>
-                {!search && (
-                  <div style={{
-                    width: '100%',
-                    maxWidth: 700,
-                    background: 'var(--bg-3)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: 14,
-                    textAlign: 'left',
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-                      Expected live path
-                    </div>
-                    <div style={{
-                      background: '#000',
-                      padding: 12,
-                      borderRadius: 6,
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      color: '#4ADE80',
-                      userSelect: 'all',
-                      wordBreak: 'break-all',
-                    }}>
-                      Windows endpoint {'->'} Wazuh Agent {'->'} archives.json {'->'} phase2/ingestor.py {'->'} phase2/edr.db
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <table>
@@ -473,15 +444,7 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
                 <MetricChip label="Alerts" value={totalAlerts} />
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-                {techniqueCounts.length > 0 ? techniqueCounts.map(([technique, count]) => (
-                  <span key={technique} className="tag" style={{ padding: '4px 8px' }}>
-                    {technique} | {count}
-                  </span>
-                )) : (
-                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>No technique-level alerts yet.</span>
-                )}
-              </div>
+
             </div>
 
             <div className="card" style={{ padding: 16 }}>
@@ -516,7 +479,6 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
           <div style={{
             padding: '14px 18px',
             borderBottom: '1px solid var(--border)',
-            background: 'var(--bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -563,7 +525,6 @@ export default function Overview({ onHostClick, impersonateTenantId }: {
                   const sevClass = severityClass(alert.severity_score)
                   return (
                   <tr key={alert.alert_id} style={{
-                    background: `var(--${sevClass}-bg)`,
                     borderLeft: `3px solid var(--${sevClass})`
                   }}>
                     <td>
@@ -617,15 +578,19 @@ function SummaryCard({
   value,
   tone,
   detail,
+  bg = 'var(--bg-3)',
+  borderColor = 'var(--border)',
 }: {
   icon: typeof Activity
   label: string
   value: string | number
   tone: string
   detail: string
+  bg?: string
+  borderColor?: string
 }) {
   return (
-    <div className="card" style={{ padding: 16, minHeight: 98 }}>
+    <div style={{ padding: 16, minHeight: 98, background: bg, border: `1px solid ${borderColor}`, borderRadius: 12 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.9px', textTransform: 'uppercase', color: 'var(--text-3)' }}>
@@ -659,7 +624,7 @@ function MetricChip({ label, value }: { label: string; value: number }) {
     <div style={{
       border: '1px solid var(--border)',
       borderRadius: 8,
-      background: 'var(--bg-2)',
+      background: 'var(--bg-3)',
       padding: '10px 12px',
       display: 'flex',
       alignItems: 'center',
@@ -681,7 +646,7 @@ function QualityRow({ label, value }: { label: string; value: string }) {
       gap: 12,
       padding: '8px 10px',
       borderRadius: 8,
-      background: 'var(--bg-2)',
+      background: 'var(--bg-3)',
       border: '1px solid var(--border)',
     }}>
       <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{label}</span>

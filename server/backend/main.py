@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -26,7 +26,9 @@ sys.path.append(PHASE2_DIR)
 
 try:
     from detector import load_sigma_rules, SIGMA_RULES
-    load_sigma_rules()
+    from rules_db import add_missing_columns
+    add_missing_columns()   # safe no-op if columns already exist
+    load_sigma_rules()      # reads from rules.db, not files
 except ImportError:
     SIGMA_RULES = []
 
@@ -162,6 +164,48 @@ def auth_me(request: Request):
         return {"authenticated": False}
     role = "admin" if email == ADMIN_EMAIL else "user"
     return {"authenticated": True, "email": email, "role": role}
+
+@app.delete("/delete-my-data")
+async def delete_my_data(request: Request):
+    """Users can permanently delete their own account and all data."""
+    user = get_current_user(request)
+    email = user.get("email", "")
+    tenant = user.get("tenant") or {}
+    tenant_id = tenant.get("id")
+    mgr = _get_saas_manager()
+    if not mgr:
+        raise HTTPException(503, "Service unavailable.")
+    if not tenant_id:
+        # Try fetching tenant directly in case get_current_user didn't populate it
+        t = mgr.get_tenant_by_email(email)
+        if t:
+            tenant_id = t.get("id")
+    if not tenant_id:
+        raise HTTPException(404, "Tenant not found.")
+
+    # Revoke Wazuh agents — best-effort, don't fail if Wazuh is offline
+    try:
+        agents = mgr.get_agents_for_tenant(tenant_id)
+        for ag in agents:
+            try:
+                await _wazuh_delete_agent(ag["agent_id"])
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Purge from master.db + delete .db file
+    mgr.purge_tenant(tenant_id)
+
+    # Also remove from allowed_users whitelist so they can't log back in
+    try:
+        mgr.remove_allowed_user(email)
+    except Exception:
+        pass
+
+    # Clear session
+    request.session.clear()
+    return {"status": "deleted", "message": "Account successfully deleted"}
 
 def get_current_user(request: Request) -> dict:
     """
@@ -933,37 +977,9 @@ def get_alert_evidence(alert_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Alert not found")
         return build_alert_evidence(conn, row)
 
-
-DISABLED_RULES_FILE = os.path.join(PHASE2_DIR, "disabled_rules.json")
-
-def load_disabled_rules() -> set:
-    try:
-        with open(DISABLED_RULES_FILE, "r") as f:
-            return set(json.load(f))
-    except FileNotFoundError:
-        return set()
-    except json.JSONDecodeError as exc:
-        print(f"[WARN] invalid disabled_rules.json ignored: {exc}", flush=True)
-        return set()
-    except Exception as exc:
-        print(f"[WARN] unable to load disabled_rules.json from {DISABLED_RULES_FILE}: {exc}", flush=True)
-        return set()
-
-def save_disabled_rules(rules_set: set):
-    with open(DISABLED_RULES_FILE, "w") as f:
-        json.dump(sorted(rules_set), f, indent=2)
-
-@app.on_event("startup")
-def validate_disabled_rules():
-    disabled = load_disabled_rules()
-    if not disabled: return
-    active_ids = {str(r["rule"].id) for r in SIGMA_RULES}
-    stale = disabled - active_ids
-    if stale:
-        print(f"[WARN] disabled_rules.json contains UUIDs that don't match any loaded rule: {stale}", flush=True)
-
 class RuleToggle(BaseModel):
     enabled: bool
+
 
 
 class AIQuery(BaseModel):
@@ -1144,42 +1160,207 @@ def query_ai(payload: AIQuery, request: Request):
             },
         }
 
+
+# ---------------------------------------------------------------------------
+# Rules endpoints — all backed by rules.db (no file I/O)
+# ---------------------------------------------------------------------------
+
+import sys as _sys
+_sys.path.insert(0, PHASE2_DIR)
+from rules_db import (
+    get_rules as _db_get_rules,
+    get_rule_yaml as _db_get_rule_yaml,
+    upsert_rule as _db_upsert_rule,
+    update_rule_yaml as _db_update_rule_yaml,
+    update_rule_meta as _db_update_rule_meta,
+    toggle_rule as _db_toggle_rule,
+    delete_rule as _db_delete_rule,
+    get_rule_stats as _db_get_rule_stats,
+)
+
+
+def _reload_sigma():
+    """Hot-reload SIGMA_RULES from rules.db after any DB change."""
+    try:
+        from detector import load_sigma_rules
+        load_sigma_rules()
+    except Exception as exc:
+        print(f"[WARN] SIGMA_RULES reload failed: {exc}", flush=True)
+
+
+def _get_caller_info(request: Request) -> tuple[str | None, str | None, bool]:
+    """Return (tenant_id, username, is_admin) from session."""
+    session = getattr(request, "session", {}) or {}
+    tenant_id  = session.get("tenant_id")
+    username   = session.get("user_email") or session.get("username")
+    is_admin   = session.get("is_admin", False)
+    return tenant_id, username, is_admin
+
+
 @app.get("/rules")
-def get_rules():
-    disabled = load_disabled_rules()
+def get_rules(request: Request):
+    tenant_id, _, is_admin = _get_caller_info(request)
+    rows = _db_get_rules(tenant_id=tenant_id, is_admin=is_admin)
     rules = []
-    for r in SIGMA_RULES:
-        rule_obj = r["rule"]
-        rule_id = str(rule_obj.id)
-        tags = [str(t) for t in getattr(rule_obj, "tags", [])]
-        techs = [t.replace("attack.", "").upper() for t in tags if str(t).lower().startswith("attack.t")]
-        level = getattr(rule_obj.level, "name", "unknown") if hasattr(rule_obj, "level") else "unknown"
-        
+    for r in rows:
+        import json as _json
+        mitre = _json.loads(r.get("mitre_techniques") or "[]")
+        tags  = _json.loads(r.get("tags") or "[]")
         rules.append({
-            "rule_id": rule_id,
-            "title": getattr(rule_obj, "title", "Unnamed"),
-            "technique_ids": techs,
-            "logsource": "events",
-            "table": "events",
-            "severity": severity_score(level),
-            "tags": tags,
-            "enabled": rule_id not in disabled,
-            "is_global": True,
+            "rule_id":       r["rule_id"],
+            "title":         r["title"],
+            "description":   r["description"],
+            "date":          r["date"],
+            "severity":      r["severity"],
+            "technique_ids": mitre,
+            "tags":          tags,
+            "enabled":       bool(r["enabled"]),
+            "is_custom":     bool(r["is_custom"]),
+            "is_global":     r["tenant_id"] is None,
+            "tenant_id":     r["tenant_id"],
+            "uploaded_by":   r.get("uploaded_by"),
+            "hit_count":     r.get("hit_count", 0),
+            "last_fired_at": r.get("last_fired_at"),
+            "noise_score":   round(r.get("noise_score", 0.0), 3),
+            "created_at":    r.get("created_at"),
+            "updated_at":    r.get("updated_at"),
         })
     return {"count": len(rules), "rules": rules}
 
+
+@app.get("/rules/stats")
+def get_rule_stats():
+    """Rule Performance Report — all rules ranked by hit_count."""
+    import json as _json
+    rows = _db_get_rule_stats()
+    return {"stats": rows}
+
+
 @app.post("/rules/{rule_id}/toggle")
 def toggle_rule(rule_id: str, payload: RuleToggle):
-    active_ids = {str(r["rule"].id) for r in SIGMA_RULES}
-    if rule_id not in active_ids:
+    ok = _db_toggle_rule(rule_id, payload.enabled)
+    if not ok:
         raise HTTPException(status_code=404, detail="Rule not found")
-    disabled = load_disabled_rules()
-    if payload.enabled:
-        disabled.discard(rule_id)
-    else:
-        disabled.add(rule_id)
-    save_disabled_rules(disabled)
+    _reload_sigma()
     return {"status": "success", "rule_id": rule_id, "enabled": payload.enabled}
+
+
+@app.get("/rules/{rule_id}/yaml")
+def get_rule_yaml(rule_id: str):
+    raw = _db_get_rule_yaml(rule_id)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"rule_id": rule_id, "yaml": raw}
+
+
+class RuleYamlUpdate(BaseModel):
+    yaml: str
+
+
+def _check_edit_permission(request: Request, rule_id: str):
+    tenant_id, _, is_admin = _get_caller_info(request)
+    from pipeline.rules_db import get_rules_db
+    con = get_rules_db()
+    try:
+        row = con.execute("SELECT tenant_id FROM sigma_rules WHERE rule_id=?", (rule_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Rule not found")
+        rule_tenant = row["tenant_id"]
+    finally:
+        con.close()
+    if rule_tenant is None:
+        if not is_admin:
+            raise HTTPException(403, "Global rules can only be edited by admins")
+    else:
+        if not is_admin and rule_tenant != tenant_id:
+            raise HTTPException(403, "Not authorized to edit this rule")
+
+
+@app.put("/rules/{rule_id}/yaml")
+def update_rule_yaml(rule_id: str, payload: RuleYamlUpdate, request: Request):
+    """Update raw YAML — re-parses and updates all metadata columns atomically."""
+    _check_edit_permission(request, rule_id)
+    import yaml as _yaml
+    try:
+        _yaml.safe_load(payload.yaml)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}")
+    ok = _db_update_rule_yaml(rule_id, payload.yaml)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    _reload_sigma()
+    return {"status": "saved", "rule_id": rule_id}
+
+
+class RuleMetaUpdate(BaseModel):
+    title:            Optional[str] = None
+    description:      Optional[str] = None
+    date:             Optional[str] = None
+    severity:         Optional[str] = None
+    tags:             Optional[list] = None
+    mitre_techniques: Optional[list] = None
+    rule_references:  Optional[list] = None
+    falsepositives:   Optional[list] = None
+
+
+@app.put("/rules/{rule_id}/meta")
+def update_rule_meta(rule_id: str, payload: RuleMetaUpdate, request: Request):
+    """Update rule metadata fields without touching detection YAML."""
+    _check_edit_permission(request, rule_id)
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    ok = _db_update_rule_meta(rule_id, updates)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"status": "updated", "rule_id": rule_id}
+
+
+@app.post("/rules/upload")
+async def upload_rule(
+    request: Request,
+    yaml_text: str = Form(default=""),
+    file: UploadFile = File(default=None),
+):
+    """Upload a new Sigma rule (paste or file). Stores in rules.db."""
+    _, username, _ = _get_caller_info(request)
+    tenant_id, _, _ = _get_caller_info(request)
+
+    if file and file.filename:
+        raw = (await file.read()).decode("utf-8")
+    elif yaml_text.strip():
+        raw = yaml_text
+    else:
+        raise HTTPException(status_code=400, detail="Provide yaml_text or upload a .yml file")
+
+    try:
+        result = _db_upsert_rule(
+            raw_yaml=raw,
+            is_custom=1,
+            tenant_id=tenant_id,
+            uploaded_by=username or "unknown",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DB write failed: {exc}")
+
+    _reload_sigma()
+    return {
+        "status":       "uploaded",
+        "rule_id":      result["rule_id"],
+        "title":        result["title"],
+        "rules_loaded": len(SIGMA_RULES),
+    }
+
+
+@app.delete("/rules/{rule_id}")
+def delete_rule(rule_id: str, request: Request):
+    _check_edit_permission(request, rule_id)
+    ok = _db_delete_rule(rule_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    _reload_sigma()
+    return {"status": "deleted", "rule_id": rule_id}
+
 
 
 @app.get("/hosts")
@@ -1387,8 +1568,8 @@ from fastapi import Request, Response
 
 @app.get("/deploy/sysmon.xml")
 def get_sysmon_xml():
-    import os
-    sysmon_path = os.path.abspath(os.path.join(PHASE2_DIR, "..", "infra", "sysmon_config.xml"))
+    import pathlib
+    sysmon_path = pathlib.Path(__file__).parent.parent / "endpoint" / "sysmon_config.xml"
     try:
         with open(sysmon_path, "r", encoding="utf-8") as sf:
             return Response(content=sf.read(), media_type="application/xml")
@@ -2068,3 +2249,34 @@ def admin_get_isolation_status(agent_id: str, request: Request):
         "is_isolated": bool(row["is_isolated"]),
         "is_revoked": bool(row["is_revoked"]),
     }
+
+
+# ---------------------------------------------------------------------------
+# Serve pre-built React frontend (Codespace / production mode)
+# FastAPI serves dist/ as static files — no Node/Vite needed at runtime.
+# API routes defined above always take priority over the catch-all below.
+# ---------------------------------------------------------------------------
+import pathlib as _pathlib
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, Response
+
+_DIST = _pathlib.Path(__file__).resolve().parent.parent / 'frontend' / 'dist'
+
+if _DIST.is_dir():
+    _assets = _DIST / 'assets'
+    if _assets.is_dir():
+        app.mount('/assets', StaticFiles(directory=str(_assets)), name='spa-assets')
+
+    @app.get('/favicon.ico', include_in_schema=False)
+    def _favicon():
+        f = _DIST / 'favicon.ico'
+        return FileResponse(str(f)) if f.exists() else Response(status_code=204)
+
+    @app.get('/', include_in_schema=False)
+    def _spa_root():
+        return FileResponse(str(_DIST / 'index.html'))
+
+    @app.get('/{_:path}', include_in_schema=False)
+    def _spa_fallback(_: str):
+        return FileResponse(str(_DIST / 'index.html'))
+

@@ -91,18 +91,15 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
         {/* Avatar circle */}
         <div style={{
           width: 32, height: 32, borderRadius: '50%',
-          background: isAdmin ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+          background: 'rgba(255,255,255,0.1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
-          {isAdmin ? <Shield size={16} color="#fff" /> : <User size={16} color="#ccc" />}
+          <User size={16} color="#ccc" />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
             {displayName}
-          </span>
-          <span style={{ fontSize: 10, color: isAdmin ? '#ef4444' : 'var(--text-3)', fontWeight: 600, letterSpacing: '0.5px' }}>
-            {isAdmin ? 'ADMIN' : 'USER'}
           </span>
         </div>
         <ChevronDown size={14} color="var(--text-3)" style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', marginLeft: 4 }} />
@@ -124,25 +121,13 @@ export default function AccountMenu({ email, role, onSignOut }: AccountMenuProps
         }}>
           {/* User info header */}
           <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)', borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAdmin ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-4)', border: isAdmin ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Shield size={16} color={isAdmin ? '#ef4444' : 'var(--text-3)'} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-4)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <User size={16} color="var(--text-3)" />
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{displayName}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{email}</div>
-              </div>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontSize: 10, fontWeight: 800, letterSpacing: '0.5px',
-                color: isAdmin ? '#ef4444' : 'var(--text-3)',
-                background: isAdmin ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-4)',
-                border: isAdmin ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
-                padding: '3px 8px', borderRadius: 6,
-              }}>
-                {isAdmin ? <><Shield size={10} /> ADMIN</> : <><User size={10} /> USER</>}
               </div>
             </div>
           </div>

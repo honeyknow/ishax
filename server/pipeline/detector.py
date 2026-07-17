@@ -186,18 +186,28 @@ def decode_amsi_hex(hex_str: str) -> str:
 
 
 # ==========================================================================
-# AMSI Layer A — detection patterns  (§3 Layer A, §4)
+# AMSI Layer A — Dynamic pattern loading from amsi_patterns.json  (H-1, R-1)
 # ==========================================================================
+# Patterns, caller filters, and staging markers are loaded from
+# amsi_patterns.json at startup and hot-reloaded on mtime change — no
+# restart needed to add/update patterns.
+#
+# Fallback: if the JSON file is missing or corrupt, hardcoded defaults below
+# are used so detection continues without interruption.
+#
+# Robustness guarantees:
+#   - All string matching is case-insensitive (content.lower() vs pattern.lower())
+#   - Process image matching uses basename endswith (path-prefix agnostic)
+#   - Content-name matching is case-insensitive substring
+#   - Any non-string pattern in the JSON is skipped with a warning
 
-# T1059.001 — PowerShell malicious content patterns
-# Adapted from SigmaHQ:
-#   rules/windows/powershell/powershell_script/posh_ps_malicious_commandlets.yml
-#   rules/windows/powershell/powershell_script/posh_ps_download_cradle.yml
-# (No direct SigmaHQ AMSI-content rule — this is custom for AMSI buffer matching.)
-_PS_PATTERNS: list[str] = [
+_AMSI_JSON_PATH = Path(__file__).parent / "amsi_patterns.json"
+
+# Fallback hardcoded patterns (used only if JSON is missing/corrupt)
+_DEFAULT_PS_PATTERNS: list[str] = [
     "Invoke-Mimikatz", "Invoke-Mimikittenz", "Invoke-NanoDump",
     "Invoke-SafetyKatz", "Invoke-BetterSafetyKatz", "Invoke-DinvokeKatz",
-    "sekurlsa", "logonpasswords", "lsadump", "dcsync",
+    "sekurlsa", "logonpasswords", "lsadump", "dcsync", "hashdump",
     "Invoke-Shellcode", "Invoke-ReflectivePEInjection", "Invoke-PSInject",
     "Invoke-DllInjection", "VirtualAlloc", "CreateThread",
     "Get-GPPPassword", "Get-PassHashes", "Get-LSASecret",
@@ -208,26 +218,22 @@ _PS_PATTERNS: list[str] = [
     "Invoke-WebRequest", "Start-BitsTransfer",
     "IEX(", "IEX (", "Invoke-Expression",
     "amsiInitFailed", "AmsiScanBuffer", "amsiContext",
-    "amsi.dll", "AmsiScanString",
+    "amsi.dll", "AmsiScanString", "AmsiOpenSession",
+    "bypass", "-nop", "-noni", "-w hidden",
+    "Set-MpPreference", "DisableRealtimeMonitoring",
 ]
-
-# T1059.005 — VBA / Office macro malicious patterns
-# Custom — no equivalent SigmaHQ AMSI-content rule for VBA buffer.
-# Source: https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/office-macro-amsi
-_VBA_PATTERNS: list[str] = [
+_DEFAULT_VBA_PATTERNS: list[str] = [
     "CreateObject", "Shell", "WScript.Shell", "PowerShell",
     "cmd.exe", "certutil", "bitsadmin", "mshta",
     "AutoOpen", "Document_Open", "Workbook_Open", "Auto_Open",
+    "AutoExec", "AutoClose", "Document_Close", "Workbook_Close",
     "Environ(", "Chr(", "ChrW(", "CallByName",
     "VirtualAlloc", "RtlMoveMemory", "CreateThread",
     "URLDownloadToFile", "XMLHTTP", "WinHttpRequest",
     "Shell32", "Execute", "MacroSecurity",
+    "ADODB.Stream", "Scripting.FileSystemObject",
 ]
-
-# T1059.007 — JavaScript / VBScript malicious patterns
-# Custom — no equivalent SigmaHQ AMSI-content rule for JS/VBS buffer.
-# Source: https://learn.microsoft.com/en-us/windows/win32/amsi/how-amsi-helps
-_JS_VBS_PATTERNS: list[str] = [
+_DEFAULT_JS_VBS_PATTERNS: list[str] = [
     "WScript.Shell", "Shell.Application", "ActiveXObject",
     "CreateObject", "GetObject",
     "eval(", "unescape(", "String.fromCharCode", "escape(",
@@ -235,36 +241,158 @@ _JS_VBS_PATTERNS: list[str] = [
     "URLDownloadToFile", "XMLHTTP", "WinHttp",
     "PowerShell", "cmd.exe", "certutil",
     "RegExp(", "new Function(",
+    "atob(", "btoa(", "exec(", "child_process",
 ]
-
-
-# Office process image names (for T1059.005 caller identification)
-_OFFICE_IMAGES: frozenset[str] = frozenset({
+_DEFAULT_OFFICE_IMAGES: frozenset[str] = frozenset({
     "winword.exe", "excel.exe", "powerpnt.exe",
     "outlook.exe", "onenote.exe", "access.exe",
-    "msaccess.exe", "mspub.exe",
+    "msaccess.exe", "mspub.exe", "visio.exe",
+    "winproj.exe", "groove.exe", "infopath.exe",
 })
-
-# Office document extensions in content_name (for T1059.005)
-_OFFICE_EXTS: tuple[str, ...] = (
+_DEFAULT_OFFICE_EXTS: tuple[str, ...] = (
     ".docm", ".xlsm", ".xlam", ".dotm", ".pptm",
-    ".xls", ".doc", ".xlsb", "VBA", "vba",
+    ".xls", ".doc", ".xlsb", ".pptx", ".docx", "vba", "vbe7",
 )
-
-# WSH process image names (for T1059.007 caller identification)
-_WSH_IMAGES: frozenset[str] = frozenset({
+_DEFAULT_WSH_IMAGES: frozenset[str] = frozenset({
     "wscript.exe", "cscript.exe", "mshta.exe",
+    "jscript.exe", "vbscript.exe", "node.exe",
 })
-
-# Script file extensions in content_name (for T1059.007)
-_SCRIPT_EXTS: tuple[str, ...] = (
+_DEFAULT_SCRIPT_EXTS: tuple[str, ...] = (
     ".js", ".vbs", ".jse", ".vbe", ".wsf", ".wsh", ".hta",
+    ".ps1", ".psd1", ".psm1",
+)
+_DEFAULT_STAGING_MARKERS: tuple[str, ...] = (
+    "\\temp\\", "\\appdata\\", "\\downloads\\", "\\users\\public\\",
+    "\\tmp\\", "\\programdata\\", "\\recycle.bin\\", "\\windows\\temp\\",
+    "/tmp/", "/var/tmp/", "/dev/shm/",
 )
 
+# Runtime mutable config — updated by _load_amsi_config() on mtime change
+_amsi_cfg_mtime: float = 0.0
+_PS_PATTERNS:      list[str]       = list(_DEFAULT_PS_PATTERNS)
+_VBA_PATTERNS:     list[str]       = list(_DEFAULT_VBA_PATTERNS)
+_JS_VBS_PATTERNS:  list[str]       = list(_DEFAULT_JS_VBS_PATTERNS)
+_OFFICE_IMAGES:    frozenset[str]  = _DEFAULT_OFFICE_IMAGES
+_OFFICE_EXTS:      tuple[str, ...] = _DEFAULT_OFFICE_EXTS
+_WSH_IMAGES:       frozenset[str]  = _DEFAULT_WSH_IMAGES
+_SCRIPT_EXTS:      tuple[str, ...] = _DEFAULT_SCRIPT_EXTS
+_STAGING_MARKERS:  tuple[str, ...]  = _DEFAULT_STAGING_MARKERS
+
+
+def _validate_str_list(raw: object, field_name: str) -> list[str]:
+    """Return a validated list[str] from raw JSON value. Skips non-strings with a warning."""
+    if not isinstance(raw, list):
+        print(f"[WARN] amsi_patterns.json: '{field_name}' should be a list, got {type(raw).__name__}. Using default.", flush=True)
+        return []
+    result = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            result.append(item)
+        else:
+            print(f"[WARN] amsi_patterns.json: skipping non-string pattern in '{field_name}': {item!r}", flush=True)
+    return result
+
+
+def _load_amsi_config() -> None:
+    """
+    Hot-reload amsi_patterns.json if it changed on disk.
+    Updates module-level pattern lists and caller-filter sets in-place.
+    Falls back to hardcoded defaults on any error so detection never stops.
+    Called once per event in run_rules() — mtime check is O(1).
+    """
+    global _amsi_cfg_mtime, _PS_PATTERNS, _VBA_PATTERNS, _JS_VBS_PATTERNS
+    global _OFFICE_IMAGES, _OFFICE_EXTS, _WSH_IMAGES, _SCRIPT_EXTS, _STAGING_MARKERS
+
+    try:
+        mtime = _AMSI_JSON_PATH.stat().st_mtime
+    except FileNotFoundError:
+        # JSON file deleted — keep current in-memory config (no change)
+        return
+    except Exception as exc:
+        print(f"[WARN] amsi_patterns.json stat failed: {exc}", flush=True)
+        return
+
+    if mtime == _amsi_cfg_mtime:
+        return  # No change — skip expensive JSON parse
+
+    try:
+        with open(_AMSI_JSON_PATH, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except json.JSONDecodeError as exc:
+        print(f"[WARN] amsi_patterns.json JSON parse error — keeping previous config: {exc}", flush=True)
+        return
+    except Exception as exc:
+        print(f"[WARN] amsi_patterns.json read error: {exc}", flush=True)
+        return
+
+    if not isinstance(cfg, dict):
+        print(f"[WARN] amsi_patterns.json root must be a JSON object. Keeping previous config.", flush=True)
+        return
+
+    # --- Technique patterns ---
+    def _load_patterns(key: str, default: list[str]) -> list[str]:
+        tech = cfg.get(key, {})
+        if not isinstance(tech, dict):
+            return list(default)
+        raw = tech.get("patterns", [])
+        loaded = _validate_str_list(raw, f"{key}.patterns")
+        return loaded if loaded else list(default)
+
+    ps   = _load_patterns("T1059.001", _DEFAULT_PS_PATTERNS)
+    vba  = _load_patterns("T1059.005", _DEFAULT_VBA_PATTERNS)
+    js   = _load_patterns("T1059.007", _DEFAULT_JS_VBS_PATTERNS)
+
+    # --- Caller filters ---
+    cf = cfg.get("caller_filters", {})
+    if not isinstance(cf, dict):
+        cf = {}
+
+    def _load_frozenset(key: str, default: frozenset[str]) -> frozenset[str]:
+        raw = _validate_str_list(cf.get(key, []), f"caller_filters.{key}")
+        return frozenset(s.lower() for s in raw) if raw else default
+
+    def _load_tuple(key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+        raw = _validate_str_list(cf.get(key, []), f"caller_filters.{key}")
+        return tuple(s.lower() for s in raw) if raw else default
+
+    office_imgs = _load_frozenset("office_images", _DEFAULT_OFFICE_IMAGES)
+    office_exts = _load_tuple("office_extensions", _DEFAULT_OFFICE_EXTS)
+    wsh_imgs    = _load_frozenset("wsh_images", _DEFAULT_WSH_IMAGES)
+    script_exts = _load_tuple("script_extensions", _DEFAULT_SCRIPT_EXTS)
+
+    # --- Staging path markers ---
+    sm_cfg = cfg.get("staging_path_markers", {})
+    staging: tuple[str, ...] = _DEFAULT_STAGING_MARKERS
+    if isinstance(sm_cfg, dict):
+        raw_sm = _validate_str_list(sm_cfg.get("markers", []), "staging_path_markers.markers")
+        if raw_sm:
+            staging = tuple(s.lower() for s in raw_sm)
+
+    # Commit — all-or-nothing to avoid partial-update race
+    _PS_PATTERNS     = ps
+    _VBA_PATTERNS    = vba
+    _JS_VBS_PATTERNS = js
+    _OFFICE_IMAGES   = office_imgs
+    _OFFICE_EXTS     = office_exts
+    _WSH_IMAGES      = wsh_imgs
+    _SCRIPT_EXTS     = script_exts
+    _STAGING_MARKERS = staging
+    _amsi_cfg_mtime  = mtime
+
+    print(
+        f"[INFO] amsi_patterns.json reloaded: "
+        f"PS={len(ps)}, VBA={len(vba)}, JS={len(js)}, "
+        f"office_apps={len(office_imgs)}, wsh_apps={len(wsh_imgs)}",
+        flush=True,
+    )
 
 
 def _get_process_image(con: sqlite3.Connection, process_guid: str) -> str:
-    """Look up process image path from process_nodes. Returns '' if unknown."""
+    """
+    Look up process image path from process_nodes by GUID.
+    Returns lowercase basename only (e.g. 'winword.exe') — path-prefix agnostic.
+    Returns '' if unknown.
+    """
     if not process_guid:
         return ""
     try:
@@ -272,7 +400,12 @@ def _get_process_image(con: sqlite3.Connection, process_guid: str) -> str:
             "SELECT image FROM process_nodes WHERE process_guid = ? LIMIT 1",
             (process_guid,),
         ).fetchone()
-        return (row[0] or "").lower() if row else ""
+        img = (row[0] or "").strip()
+        if not img:
+            return ""
+        # Normalise: lowercase basename only so matching works regardless of install path
+        # e.g. "C:\Program Files\Microsoft Office\winword.exe" → "winword.exe"
+        return img.lower().replace("\\", "/").split("/")[-1]
     except Exception:
         return ""
 
@@ -284,9 +417,15 @@ def check_amsi_layer(
     AMSI Layer A detection for T1059.001, T1059.005, T1059.007.
     Called only for events where channel = 'ishax-amsi'.
 
+    Patterns + caller filters are hot-loaded from amsi_patterns.json before
+    each run — no restart needed to update patterns.
+
     Returns list of raw_detection dicts to insert into raw_detections.
     T1027 obfuscation score is computed here and attached to each hit.
     """
+    # Hot-reload patterns from JSON if changed on disk
+    _load_amsi_config()
+
     hits: list[dict] = []
 
     content_hex   = ev.get("amsi_content_hex") or ""
@@ -304,6 +443,7 @@ def check_amsi_layer(
     obf_score = score_obfuscation(content) if content else 0.0
 
     # Caller identification from process_nodes (joined via process_guid)
+    # _get_process_image returns lowercase basename only (path-agnostic)
     process_image = _get_process_image(con, process_guid) if process_guid else ""
 
     def _build(technique: str, matched: list[str]) -> dict:
@@ -318,51 +458,53 @@ def check_amsi_layer(
             "obfuscation_score": obf_score,
         }
 
+    content_lower = content.lower() if content else ""
+
     # --- T1059.001 PowerShell ---
-    # Filter: content_name starts with 'powershell_' OR process image = powershell.exe
-    # ContentName for PowerShell: "PowerShell_<path>_<version>" per AMSI_ETW_IMPL.md sample
-    is_ps = "powershell" in content_name or "powershell" in process_image
-    if is_ps and content:
-        matched = [p for p in _PS_PATTERNS if p.lower() in content.lower()]
+    # Filter: content_name contains 'powershell' OR process image is a PowerShell host
+    # PowerShell hosts loaded from amsi_patterns.json caller_filters.powershell_images
+    # ContentName for PowerShell: "PowerShell_<path>_<version>" per AMSI_ETW_IMPL.md
+    is_ps = (
+        "powershell" in content_name
+        or process_image in {"powershell.exe", "pwsh.exe", "powershell_ise.exe"}
+    )
+    if is_ps and content_lower:
+        matched = [p for p in _PS_PATTERNS if p.lower() in content_lower]
         if matched:
             hits.append(_build("T1059.001", matched))
 
     # --- T1059.005 VBA / Office ---
-    # Filter: calling process is an Office app OR content_name has Office extension
-    # Documented appname values: "VBA", "Office 16.0", "VBE7" (varies by Office version)
-    # We use process image as primary discriminator since appname is not captured by our watcher.
-    is_office = any(img in process_image for img in _OFFICE_IMAGES)
+    # process_image is basename-only lowercase — direct set lookup (O(1))
+    # _OFFICE_IMAGES now loaded from JSON caller_filters.office_images
+    is_office     = process_image in _OFFICE_IMAGES
     has_office_ext = any(ext in content_name for ext in _OFFICE_EXTS)
-    if (is_office or has_office_ext) and content:
-        matched = [p for p in _VBA_PATTERNS if p.lower() in content.lower()]
+    if (is_office or has_office_ext) and content_lower:
+        matched = [p for p in _VBA_PATTERNS if p.lower() in content_lower]
         if matched:
             hits.append(_build("T1059.005", matched))
 
     # --- T1059.007 JS / VBScript ---
-    # Filter: calling process is wscript/cscript/mshta OR content_name has script extension
-    # Documented appname values: "Windows Script Host", "JScript", "VBScript"
-    # (exact string varies by Windows version — confirmed unverified, using process image)
-    is_wsh = any(img in process_image for img in _WSH_IMAGES)
+    # _WSH_IMAGES now loaded from JSON caller_filters.wsh_images
+    is_wsh        = process_image in _WSH_IMAGES
     has_script_ext = any(ext in content_name for ext in _SCRIPT_EXTS)
-    if (is_wsh or has_script_ext) and content:
-        matched = [p for p in _JS_VBS_PATTERNS if p.lower() in content.lower()]
+    if (is_wsh or has_script_ext) and content_lower:
+        matched = [p for p in _JS_VBS_PATTERNS if p.lower() in content_lower]
         if matched:
             hits.append(_build("T1059.007", matched))
 
     return hits
 
 
+
 # ==========================================================================
 # T1543.003 — Service confidence enrichment  (§6)
 # ==========================================================================
 # Per §6: path is EVIDENCE for confidence, NOT a gate. Emit always.
-# HIGH  → binary in staging dir OR service start near creation (suspicious timing)
-# MEDIUM → system-path binary, unusual name/context (still emitted, still actionable)
-
-_STAGING_MARKERS: tuple[str, ...] = (
-    "\\temp\\", "\\appdata\\", "\\downloads\\", "\\users\\public\\",
-    "\\tmp\\", "\\programdata\\",
-)
+# HIGH  → binary in staging dir (loaded from amsi_patterns.json) OR random-looking service name
+# MEDIUM → system-path binary (still emitted, still actionable)
+#
+# _STAGING_MARKERS is now loaded from amsi_patterns.json staging_path_markers.markers
+# Fallback: _DEFAULT_STAGING_MARKERS (defined above) used if JSON missing/corrupt
 _RANDOM_SVC_RE = re.compile(r"^[a-z0-9]{6,12}$")  # short random-looking service names
 
 
@@ -384,12 +526,13 @@ def enrich_service_confidence(ev: dict) -> str:
 
 
 # ==========================================================================
-# Sigma rule loader  (Layer B)
+# Sigma rule loader  (Layer B) — reads from rules.db, not from files
 # ==========================================================================
 
 SIGMA_RULES: list[dict] = []
 
 # Sigma standard field names → our events table column names
+# KEEP IN SYNC with: ingestor.py normalise(), schema.sql events table
 _FIELD_MAP: dict[str, str] = {
     "Image":            "process_path",
     "CommandLine":      "command_line",
@@ -407,9 +550,14 @@ _FIELD_MAP: dict[str, str] = {
     # Service install events (EID 7045 / 4697)
     "ServiceName":      "service_name",
     "ImagePath":        "image_path",
-    # Event envelope fields (for rules that filter by event_id)
+    # Event envelope / system fields
     "EventID":          "event_id",
     "Channel":          "channel",
+    "Provider_Name":    "provider_name",
+    # Sysmon EID 10 ProcessAccess
+    "CallTrace":        "call_trace",
+    # Registry value written (EID 13 Details field)
+    "Details":          "details",
     # AMSI specific fields
     "AmsiContentName":  "amsi_content_name",
     "AmsiScanResult":   "amsi_scan_result",
@@ -418,62 +566,41 @@ _FIELD_MAP: dict[str, str] = {
 
 
 def load_sigma_rules():
+    """
+    Load all enabled Sigma rules from rules.db into SIGMA_RULES.
+    Compiles each to a SQLite WHERE-clause via pySigma.
+    Replaces the old file-based loader — rules folder no longer required.
+    """
     global SIGMA_RULES
-    if SIGMA_RULES:
-        return
+    SIGMA_RULES.clear()
 
-    rules_dir = Path(__file__).parent / "sigma_rules"
-    if not rules_dir.exists():
-        print(f"[WARN] sigma_rules/ not found at {rules_dir}", flush=True)
-        return
+    from rules_db import get_enabled_rules_for_detection
+    import io
 
     pipeline = ProcessingPipeline()
     pipeline.items.append(ProcessingItem(
         transformation=FieldMappingTransformation(_FIELD_MAP)
     ))
-
     backend = sqliteBackend(processing_pipeline=pipeline)
-    col = SigmaCollection.load_ruleset([str(rules_dir)])
 
-    for rule in col.rules:
+    rows = get_enabled_rules_for_detection()
+    for row in rows:
+        rule_id = row["rule_id"]
+        raw_yaml = row["yaml_content"]
         try:
-            for query in backend.convert_rule(rule):
-                sql = query.replace(
-                    "SELECT * FROM <TABLE_NAME> WHERE ",
-                    "SELECT id FROM events WHERE "
-                )
-                SIGMA_RULES.append({"rule": rule, "sql": sql})
+            col = SigmaCollection.from_yaml(raw_yaml)
+            for rule in col.rules:
+                for query in backend.convert_rule(rule):
+                    sql = query.replace(
+                        "SELECT * FROM <TABLE_NAME> WHERE ",
+                        "SELECT id FROM events WHERE "
+                    )
+                    SIGMA_RULES.append({"rule": rule, "sql": sql, "rule_id": rule_id})
         except Exception as exc:
-            print(f"[WARN] Sigma rule compile failed ({rule.id}): {exc}", flush=True)
+            print(f"[WARN] Sigma rule compile failed ({rule_id}): {exc}", flush=True)
 
-    print(f"[INFO] Loaded {len(SIGMA_RULES)} Sigma rules via pySigma.", flush=True)
+    print(f"[INFO] Loaded {len(SIGMA_RULES)} Sigma rules from rules.db.", flush=True)
 
-
-# ==========================================================================
-# Disabled-rules cache
-# ==========================================================================
-
-_disabled_cache: set = set()
-_last_mtime: float = 0.0
-
-
-def load_disabled_rules():
-    global _disabled_cache, _last_mtime
-    path = os.path.join(os.path.dirname(__file__), "disabled_rules.json")
-    try:
-        mtime = os.path.getmtime(path)
-        if mtime != _last_mtime:
-            with open(path) as f:
-                _disabled_cache = set(json.load(f))
-            _last_mtime = mtime
-    except FileNotFoundError:
-        _disabled_cache = set()
-    except json.JSONDecodeError as exc:
-        print(f"[WARN] invalid disabled_rules.json ignored: {exc}", flush=True)
-        _disabled_cache = set()
-    except Exception as exc:
-        print(f"[WARN] unable to load disabled_rules.json from {path}: {exc}", flush=True)
-        _disabled_cache = set()
 
 # ==========================================================================
 # raw_detections staging table operations
@@ -512,18 +639,66 @@ def _insert_raw_detection(con: sqlite3.Connection, det: dict) -> int | None:
 _MERGE_WINDOW: int = 30          # seconds — tight per §3 to avoid flood
 _AMSI_TECHNIQUES: frozenset[str] = frozenset({"T1059.001", "T1059.005", "T1059.007"})
 
-# In-process alert upgrade tracker: (technique, process_guid) → (alert_id, ts, confidence)
-# Allows upgrading a MEDIUM cmdline-only alert to HIGH when AMSI corroboration arrives.
-# Lost on restart; 30s window is short enough that cross-restart upgrades are negligible.
-_active_detections: dict[tuple, dict] = {}
-_ACTIVE_TTL: int = 120  # purge entries older than 2 minutes to prevent unbounded growth
+# In-process alert upgrade tracker — M-3 FIX: now persisted in SQLite active_detections table.
+# Survives restarts: MEDIUM→HIGH upgrade works even if ingestor is restarted between
+# the cmdline detection and the AMSI corroboration event arriving.
+# The in-memory dict below is kept as a write-through cache only (avoids DB reads on every event).
+_active_detections: dict[tuple, dict] = {}  # write-through cache; authoritative copy is in DB
+_ACTIVE_TTL: int = 120  # seconds — rows older than this are expired/purged
 
 
-def _purge_active_detections():
+def _purge_active_detections(con: sqlite3.Connection):
+    """Delete expired rows from DB + sync in-memory cache."""
     now = int(time.time())
+    try:
+        con.execute("DELETE FROM active_detections WHERE expires_at < ?", (now,))
+        con.commit()
+    except Exception as exc:
+        print(f"[WARN] active_detections purge: {exc}", flush=True)
+    # Sync cache: remove stale keys
     stale = [k for k, v in _active_detections.items() if now - v["ts"] > _ACTIVE_TTL]
     for k in stale:
         del _active_detections[k]
+
+
+def _get_active_detection(con: sqlite3.Connection, key: tuple) -> dict | None:
+    """Read from cache first; fall back to DB (for cross-restart lookup)."""
+    cached = _active_detections.get(key)
+    if cached:
+        return cached
+    technique, pguid, endpoint = key
+    try:
+        row = con.execute(
+            """SELECT alert_id, ts, confidence FROM active_detections
+               WHERE technique=? AND process_guid=? AND endpoint_id=?
+                 AND expires_at > ?""",
+            (technique, pguid, endpoint, int(time.time()))
+        ).fetchone()
+        if row:
+            val = {"alert_id": row[0], "ts": row[1], "confidence": row[2]}
+            _active_detections[key] = val  # populate cache
+            return val
+    except Exception as exc:
+        print(f"[WARN] active_detections lookup: {exc}", flush=True)
+    return None
+
+
+def _set_active_detection(con: sqlite3.Connection, key: tuple, val: dict):
+    """Write to DB and cache atomically."""
+    technique, pguid, endpoint = key
+    expires_at = val["ts"] + _ACTIVE_TTL
+    try:
+        con.execute(
+            """INSERT OR REPLACE INTO active_detections
+               (technique, process_guid, endpoint_id, alert_id, ts, confidence, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (technique, pguid, endpoint,
+             val.get("alert_id"), val["ts"], val["confidence"], expires_at)
+        )
+        con.commit()
+    except Exception as exc:
+        print(f"[WARN] active_detections write: {exc}", flush=True)
+    _active_detections[key] = val  # keep cache in sync
 
 
 # Rule name / ID lookup for alerts built from raw_detections
@@ -682,9 +857,9 @@ def _run_merge(con: sqlite3.Connection, ev: dict) -> list[dict]:
         # --- Upgrade logic ---
         # If we already emitted an alert for (technique, pguid) within the window,
         # upgrade it in-place rather than emitting a duplicate.
-        _purge_active_detections()
+        _purge_active_detections(con)  # M-3: purge expired DB rows
         track_key = (technique, pguid or "", endpoint or "")
-        existing  = _active_detections.get(track_key)
+        existing  = _get_active_detection(con, track_key)  # M-3: DB-backed lookup
 
         if existing and (ts - existing["ts"]) <= _MERGE_WINDOW:
             # Within the same 30s window — upgrade if confidence improved
@@ -695,7 +870,10 @@ def _run_merge(con: sqlite3.Connection, ev: dict) -> list[dict]:
                 )
                 alert["_existing_alert_id"] = existing["alert_id"]
                 fired.append(alert)
-                _active_detections[track_key]["confidence"] = "HIGH"
+                # M-3: update confidence in DB
+                _set_active_detection(con, track_key, {
+                    **existing, "confidence": "HIGH"
+                })
             # else: same or lower confidence, skip — §3.5 no duplicate
             merged_row_ids.extend(row_ids)
             continue
@@ -706,12 +884,12 @@ def _run_merge(con: sqlite3.Connection, ev: dict) -> list[dict]:
             confidence, no_amsi, obf_score, event_id_fk, ev
         )
         fired.append(alert)
-        # Track for potential future upgrade in this window
-        _active_detections[track_key] = {
-            "alert_id":   None,   # will be filled after insert by caller
+        # M-3: Track for potential future upgrade — written to DB immediately
+        _set_active_detection(con, track_key, {
+            "alert_id":   None,   # will be filled by register_alert_id after insert
             "ts":         ts,
             "confidence": confidence,
-        }
+        })
         merged_row_ids.extend(row_ids)
 
     # Mark processed raw_detections as merged=1
@@ -729,10 +907,15 @@ def _run_merge(con: sqlite3.Connection, ev: dict) -> list[dict]:
     return fired
 
 
-def register_alert_id(technique: str, pguid: str, endpoint: str, alert_id: int):
-    """Called by ingestor after INSERT to fill in the alert_id for upgrade tracking."""
+def register_alert_id(con: sqlite3.Connection, technique: str, pguid: str, endpoint: str, alert_id: int):
+    """Called by ingestor after INSERT to fill in the alert_id for upgrade tracking.
+    M-3: Persists to DB so upgrade tracking survives restarts."""
     key = (technique, pguid or "", endpoint or "")
-    if key in _active_detections:
+    existing = _get_active_detection(con, key)
+    if existing:
+        _set_active_detection(con, key, {**existing, "alert_id": alert_id})
+    elif key in _active_detections:
+        # In-memory only fallback
         _active_detections[key]["alert_id"] = alert_id
 
 
@@ -755,7 +938,7 @@ def run_rules(con: sqlite3.Connection, ev: dict, rowid: int) -> list[dict]:
       - Upgrade alert (_existing_alert_id key set → caller should UPDATE not INSERT)
     """
     load_sigma_rules()
-    load_disabled_rules()
+
 
     channel = (ev.get("channel") or "").lower()
 
@@ -771,9 +954,7 @@ def run_rules(con: sqlite3.Connection, ev: dict, rowid: int) -> list[dict]:
     # Layer B — Sigma rules (cmdline, registry, service events)
     # ------------------------------------------------------------------
     for r in SIGMA_RULES:
-        rule_id = str(r["rule"].id)
-        if rule_id in _disabled_cache:
-            continue
+        rule_id = r.get("rule_id") or str(r["rule"].id)
 
         try:
             cur = con.execute(r["sql"] + " AND id = ?", (rowid,))
@@ -782,6 +963,13 @@ def run_rules(con: sqlite3.Connection, ev: dict, rowid: int) -> list[dict]:
         except Exception as exc:
             print(f"[WARN] Sigma rule {rule_id}: {exc}", flush=True)
             continue
+
+        # Record hit in rules.db for performance tracking
+        try:
+            from rules_db import record_rule_hit
+            record_rule_hit(rule_id)
+        except Exception:
+            pass
 
         # Map rule to technique for raw_detections
         tags = getattr(r["rule"], "tags", []) or []

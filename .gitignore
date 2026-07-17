@@ -1,7 +1,3 @@
-# =============================================================
-# ISHA-X EDR — .gitignore
-# =============================================================
-
 # OS
 .DS_Store
 Thumbs.db
@@ -15,7 +11,6 @@ __pycache__/
 env/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -31,59 +26,47 @@ wheels/
 venv/
 .venv/
 
-# SQLite databases — ephemeral data, never commit
+# SQLite databases (runtime data — never commit)
 *.db
 *.db-shm
 *.db-wal
 *.sqlite3
 
-# Node / React
+# Runtime logs & PIDs
+*.log
+*.log.err
+*.pid
+
+# Zip archives
+*.zip
+
+# Node
 node_modules/
-dist/
+# dist/ is intentionally committed — pre-built frontend served by FastAPI in Codespace
 dist-ssr/
 *.local
+.npm/
 
-# Secrets — NEVER commit these
+# Environment files (use .env.example instead)
 .env
-server/backend/.env
-*.key
-*.pem
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Log files
-*.log
-ingestor.log
-backend.log
-frontend.log
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# Inno Setup outputs
-endpoint/Output/
-endpoint/Output/*.exe
-endpoint/tailscale-setup.exe
-
-# Large binary assets (not needed in git)
-endpoint.zip
-*.msi
-Sysmon64.exe
-amsi_watcher.exe
-
-# Temp installer build dirs
-ishax_build_*/
-
-# Garbage / legacy / scratch
+# Dev/scratch folders (not for GitHub)
 garbage/
 legacy/
 recovery/
-lol.docx
-lol_original.docx
-lol.md
-evidence_t1059_001.txt
-t1059_001_report_data.json
-vm_commands.txt
-query
-codespace_trigger/
-IMPLEMENTATION_PLAN.md
-project.md
-master_technical_report.md
 
-# Vite
-.vite/
+# Project-specific ignores
+patch.py
+query
+redreport.pdf
+archives.json

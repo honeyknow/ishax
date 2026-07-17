@@ -1,0 +1,72 @@
+# Rewritten for ISHAX v2 — fixes 0/20 detection rate bug from v1.
+# Root cause of prior failure: Sysmon was not configured to monitor actual Run key
+# paths, only capturing BAM/state side-effect registry writes. Fixed in sysmon_config.xml.
+# Verification gate: run verify_t1547.ps1 on TUF17 to confirm EID 13 TargetObject
+# shows HKCU\...\Run\<name> (not a BAM/State path) before relying on this rule.
+#
+# Adapted from:
+#   SigmaHQ: rules/windows/registry/registry_set/registry_set_asep_reg_keys_modification_currentversion_run.yml
+#   SigmaHQ: rules/windows/registry/registry_set/registry_set_persistence_run_key.yml
+# Custom modifications:
+#   - Added EventID: 13 filter (SetValue only — scoped to write variant per §7)
+#   - Added explicit HKLM/HKCU path anchoring
+#   - Wow6432Node variants included for 32-bit process compat
+#   - Startup-folder file-drop variant (EID 11) explicitly excluded (out of scope §1)
+title: Registry Run Key Persistence — T1547.001 (Sysmon EID 13 SetValue)
+id: ab575646-cd24-4903-875c-ce3d17db2402
+status: test
+description: >
+  Detects writes to Windows Run/RunOnce registry keys used for persistence.
+  Scoped to registry SetValue (Sysmon EID 13) only — not CreateKey or RenameKey.
+  Covers HKLM and HKCU hives, plus Wow6432Node variants for 32-bit processes.
+  Startup-folder file-drop variant (EID 11 / T1547.001 file variant) is explicitly
+  out of scope for this pass (§1, §7).
+author: Antigravity / ISHAX v2
+date: 2026/07/11
+references:
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_asep_reg_keys_modification_currentversion_run.yml
+  - https://attack.mitre.org/techniques/T1547/001/
+  - https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon (EID 13 = SetValue)
+logsource:
+  category: registry_event
+  product: windows
+detection:
+  # Sysmon EID 13 = RegistryEvent (Value Set)
+  # Only capture the write variant — §7 "registry-write variant only"
+  selection_eid:
+    EventID: 13
+
+  # Scope to Run/RunOnce keys in both hives (HKLM + HKCU)
+  # Using 'contains' — matches both hives since Sysmon normalises to full path.
+  # Verified paths that Sysmon EID 13 TargetObject shows:
+  #   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\<value_name>
+  #   HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\<value_name>
+  #   (and Wow6432Node equivalents for 32-bit)
+  selection_run_keys:
+    TargetObject|contains:
+      - '\software\microsoft\windows\currentversion\run\'
+      - '\software\microsoft\windows\currentversion\runonce\'
+      - '\software\wow6432node\microsoft\windows\currentversion\run\'
+      - '\software\wow6432node\microsoft\windows\currentversion\runonce\'
+      - '\winlogon\shell'
+      - '\winlogon\userinit'
+
+  # Exclude known-safe writers
+  filter_safe_writers:
+    Image|endswith:
+      - '\explorer.exe'
+      - '\msiexec.exe'
+      - '\Taskmgr.exe'
+      - '\SearchIndexer.exe'
+
+  condition: selection_eid and selection_run_keys and not filter_safe_writers
+
+falsepositives:
+  - Legitimate software installers adding startup entries (allowlist by image path/hash)
+  - System administration tools modifying Run keys
+level: high
+
+tags:
+  - attack.persistence
+  - attack.t1547.001
+  - custom.edr_enhanced

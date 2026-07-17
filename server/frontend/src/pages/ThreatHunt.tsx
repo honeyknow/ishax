@@ -41,11 +41,11 @@ export default function ThreatHunt({ initialHost }: { initialHost?: string | nul
   return (
     <div style={{
       flex: 1, display: 'flex', overflow: 'hidden',
-      background: 'var(--bg-2)', padding: '16px', gap: '16px',
+      padding: '16px', gap: '16px',
     }}>
       <div style={{
         width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)',
+        background: 'var(--bg-2)', borderRadius: '12px', border: '1px solid var(--border)',
         overflow: 'hidden', boxShadow: 'var(--shadow)',
       }}>
         <AlertQueue selectedId={selectedAlert?.alert_id ?? null} onSelect={handleSelectAlert} />
@@ -53,7 +53,7 @@ export default function ThreatHunt({ initialHost }: { initialHost?: string | nul
 
       <div style={{
         flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-        background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)',
+        background: 'var(--bg-2)', borderRadius: '12px', border: '1px solid var(--border)',
         position: 'relative', boxShadow: 'var(--shadow)',
       }}>
         {fetching && (
@@ -78,7 +78,7 @@ export default function ThreatHunt({ initialHost }: { initialHost?: string | nul
               <Button
                 id="tab-process-tree"
                 variant="custom"
-                customColor="var(--accent)"
+                customColor="var(--low)"
                 onClick={() => setCenterView('tree')}
                 disabled={!selectedAlert}
                 active={centerView === 'tree'}

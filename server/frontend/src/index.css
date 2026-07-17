@@ -66,6 +66,13 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Containers ── */
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -155,7 +162,7 @@ button {
 
 /* ── Cards ── */
 .card {
-  background: var(--bg);
+  background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);

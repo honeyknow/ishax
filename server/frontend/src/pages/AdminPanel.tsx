@@ -145,8 +145,6 @@ export default function AdminPanel({ onImpersonate }: Props) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-
       {error && (
         <div style={{ padding: '10px 14px', background: 'var(--crit-bg)', border: '1px solid rgba(204,0,0,0.2)', borderRadius: 8, color: 'var(--crit)', fontSize: 13 }}>
           {error}
@@ -174,7 +172,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
           </div>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>
-            Hardware stats not available. The <code style={{ color: 'var(--accent)' }}>psutil</code> module must be installed on the server and the <code style={{ color: 'var(--accent)' }}>/health</code> endpoint must include <code>system_stats</code>.
+            Hardware stats not available.
           </div>
         )}
       </div>
@@ -216,22 +214,10 @@ export default function AdminPanel({ onImpersonate }: Props) {
                   </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-2)', fontWeight: 700 }}>{t.agent_count}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-2)' }}>{fmtBytes(t.db_size_bytes)}</td>
-                  {/* Per-user usage bar relative to largest tenant */}
-                  <td style={{ padding: '10px 14px', minWidth: 100 }}>
-                    <div style={{ height: 6, background: 'var(--bg-4)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{
-                        width: `${Math.round((t.db_size_bytes / maxDbSize) * 100)}%`,
-                        height: '100%',
-                        background: t.db_size_bytes > 50_000_000 ? '#ef4444' : t.db_size_bytes > 10_000_000 ? '#f59e0b' : '#6366f1',
-                        borderRadius: 99,
-                        transition: 'width 0.5s',
-                      }} />
-                    </div>
-                  </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-3)', fontSize: 12 }}>{fmtDate(t.last_login)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => onImpersonate(t.id, t.email)} title="View their dashboard" style={actionBtn('var(--accent)')}>
+                      <button onClick={() => onImpersonate(t.id, t.email)} title="View their dashboard" style={actionBtn('#ef4444')}>
                         <Eye size={13} /> View
                       </button>
                       <button onClick={() => api.adminExportTenantDb(t.id)} title="Download their raw SQLite DB" style={actionBtn('#22c55e')}>
@@ -339,7 +325,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
                   <tr key={u.email} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 14px', color: 'var(--text-1)', fontWeight: 600 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {isAdmin && <Lock size={11} color="var(--accent)" title="Super Admin" />}
+                        {isAdmin && <Lock size={11} color="var(--accent)" title="Admin" />}
                         {u.email}
                       </div>
                     </td>
@@ -348,7 +334,7 @@ export default function AdminPanel({ onImpersonate }: Props) {
                     <td style={{ padding: '8px 14px', color: 'var(--text-3)', fontSize: 12 }}>{fmtDate(u.added_at)}</td>
                     <td style={{ padding: '8px 14px' }}>
                       {isAdmin ? (
-                        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>PERMANENT</span>
+                        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>Admin</span>
                       ) : (
                         <button
                           onClick={() => handleRemoveUser(u.email)}

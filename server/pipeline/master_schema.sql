@@ -61,5 +61,5 @@ CREATE TABLE IF NOT EXISTS allowed_users (
 
 -- Pre-seed the admin email so it always appears in the list (password checked via .env)
 INSERT OR IGNORE INTO allowed_users (email, added_by, note)
-VALUES ('info.honeyknows@gmail.com', 'system', 'Super Admin — cannot be removed');
+VALUES ('info.honeyknows@gmail.com', 'system', 'Admin');
 

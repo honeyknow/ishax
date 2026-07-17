@@ -1,6 +1,11 @@
 import axios from 'axios'
 
-const http = axios.create({ baseURL: '/' })
+export const http = axios.create({
+  baseURL: '/', // Points to the same origin (FastAPI backend will serve SPA and API)
+  headers: {
+    'Content-Type': 'application/json',
+  }
+})
 
 // 401 interceptor: redirect to login page if unauthorized
 http.interceptors.response.use(
@@ -122,16 +127,39 @@ export interface AmsiEvent {
 }
 
 export interface SigmaRule {
-  rule_id: string
-  title: string
+  rule_id:       string
+  title:         string
+  description:   string
+  date:          string
+  severity:      string          // low | medium | high | critical
   technique_ids: string[]
-  logsource: string
-  table: string
-  severity: number
-  tags: string[]
-  is_global?: boolean
-  enabled?: boolean
-  created_at?: string
+  tags:          string[]
+  enabled:       boolean
+  is_custom:     boolean
+  is_global:     boolean
+  tenant_id:     string | null
+  uploaded_by:   string | null
+  hit_count:     number
+  last_fired_at: number | null
+  noise_score:   number
+  created_at:    number | null
+  updated_at:    number | null
+}
+
+export interface RuleStat {
+  rule_id:       string
+  title:         string
+  severity:      string
+  hit_count:     number
+  last_fired_at: number | null
+  noise_score:   number
+  enabled:       number
+  is_custom:     number
+  uploaded_by:   string | null
+  tenant_id:     string | null
+  days_active:   number
+  is_dead:       boolean
+  is_high_noise: boolean
 }
 
 export interface RegisteredEndpoint {
@@ -223,8 +251,40 @@ export const api = {
   // Rules
   getRules: () => http.get<{ count: number; rules: SigmaRule[] }>('/rules').then(r => r.data),
 
+  getRuleStats: () => http.get<{ stats: RuleStat[] }>('/rules/stats').then(r => r.data),
+
   toggleRule: (ruleId: string, enabled: boolean) =>
     http.post<{ status: string; rule_id: string; enabled: boolean }>(`/rules/${ruleId}/toggle`, { enabled }).then(r => r.data),
+
+  getRuleYaml: (ruleId: string) =>
+    http.get<{ rule_id: string; yaml: string }>(`/rules/${ruleId}/yaml`).then(r => r.data),
+
+  updateRuleYaml: (ruleId: string, yaml: string) =>
+    http.put<{ status: string; rule_id: string }>(`/rules/${ruleId}/yaml`, { yaml }).then(r => r.data),
+
+  updateRuleMeta: (ruleId: string, updates: Partial<Pick<SigmaRule,
+    'title' | 'description' | 'date' | 'severity' | 'tags' | 'technique_ids'
+  >>) =>
+    http.put<{ status: string; rule_id: string }>(`/rules/${ruleId}/meta`, updates).then(r => r.data),
+
+  uploadRule: (yamlText: string) => {
+    const form = new FormData()
+    form.append('yaml_text', yamlText)
+    return http.post<{ status: string; rule_id: string; title: string; rules_loaded: number }>(
+      '/rules/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data)
+  },
+
+  uploadRuleFile: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post<{ status: string; rule_id: string; title: string; rules_loaded: number }>(
+      '/rules/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data)
+  },
+
+  deleteRule: (ruleId: string) =>
+    http.delete<{ status: string; rule_id: string }>(`/rules/${ruleId}`).then(r => r.data),
 
   // AI
   queryAI: (payload: AIQueryRequest) => http.post<AIQueryResponse>('/ai/query', payload).then(r => r.data),
