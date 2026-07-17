@@ -134,7 +134,7 @@ export default function AlertQueue({ selectedId, onSelect }: Props) {
   }
 
   // Filter alerts based on the selected tab
-  const visibleAlerts = alerts.filter(a => {
+  const visibleAlerts = (alerts ?? []).filter(a => {
     const isInvestigated = investigatedIds.has(a.alert_id)
     return tab === 'open' ? !isInvestigated : isInvestigated
   })
