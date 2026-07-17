@@ -2,6 +2,10 @@
 # ISHA-X EDR — start backend (serves pre-built dashboard on port 8000)
 set -e
 
+# Always safely kill any orphaned uvicorn process on port 8000 first
+pkill -f uvicorn || true
+sleep 1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND="$SCRIPT_DIR/server/backend"
 
