@@ -9,7 +9,7 @@
       "protocol": "http"
     }
   },
-  "postCreateCommand": "pip install -r server/backend/requirements.txt && chmod +x start.sh && echo '\n✅ Setup done! Run: bash start.sh'",
+  "postCreateCommand": "pip install -r server/backend/requirements.txt && pip install -r server/pipeline/requirements.txt && chmod +x start.sh && echo '\n✅ Setup done! Run: bash start.sh'",
   "postStartCommand": "bash start.sh",
   "customizations": {
     "vscode": {
